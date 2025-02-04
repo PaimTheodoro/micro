@@ -2,13 +2,17 @@
 
 namespace Psf\Utils;
 
+use \Psf\Enumerators\Protocol;
+
 use \PHPMailer\PHPMailer\PHPMailer;
 use \PHPMailer\PHPMailer\SMTP;
 use \PHPMailer\PHPMailer\Exception;
 
 class Email{
-	private $debug = false;
-	private $server = [];
+	private Protocol $protocol;
+	private array $server;
+	private array $options;
+	private bool $debug = false;
 	private $error;
 
 	public function __construct($server = null){
@@ -29,44 +33,46 @@ class Email{
 		}
 	}
 
-	public static function send(array $sendTo, $subject, array $content, array $parseString = [], array $attachs = [], array $smtpOptions = [], $debug = false) : bool{
+	public static function define(int|Protocol $protocol, array $server = [], array $options = [], bool $debug = FALSE) : Email{
 		$email = new Email;
 
-		if(!empty($parseString)){
-			foreach($parseString as $key => $value){
-				$stringReplace = '{$' . $key . '$}';
-				$content['html'] = str_replace($stringReplace, $value, $content['html']);
-				$content['alt'] = str_replace($stringReplace, $value, $content['alt']);
-				$subject = str_replace($stringReplace, $value, $subject);
-			}
-		}
+		$email->protocol 	= $protocol;
+		$email->server 		= $server;
+		$email->options 	= $options;
 
+		$email->debug = $debug;
+
+		return $email;
+	}
+
+	public function send(array $from, array $to, $subject, array $content, array $attachs = []) : string|bool{
 		$mail = new PHPMailer(true);
 
 		try {
-			if($debug){
+			if($this->debug){
 				$mail->SMTPDebug = SMTP::DEBUG_SERVER;
 			}
-			$mail->isSMTP();              
-			$mail->Host = $email->server['hostname'];
-			$mail->SMTPAuth = true;                   
-			$mail->Username = $email->server['user'];
-			$mail->Password = $email->server['password'];
-			// $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;  
-			$mail->SMTPSecure = "tls";  
-			$mail->Port = (int) $email->server['port'];
 
-			if(!empty($smtpOptions)){
-				$mail->SMTPOptions = $smtpOptions;
+			$mail->isSMTP();              
+			$mail->Host = $this->server['host'];
+			$mail->SMTPAuth = true;                   
+			$mail->Username = $this->server['user'];
+			$mail->Password = $this->server['password'];
+			// $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;  
+			$mail->SMTPSecure = 'tls';  
+			$mail->Port = (int) $this->server['port'];
+
+			if(!empty($this->options)){
+				$mail->SMTPOptions = $this->options;
 			}
 
-			if($email->server['hostname'] == "smtp.mailtrap.io"){
-				$mail->setFrom("teste@gmail.com", $email->server['name']); // De
+			if($this->server['host'] == "smtp.mailtrap.io"){
+				$mail->setFrom("teste@gmail.com", $this->server['name']); // De
 			}else{
-				$mail->setFrom($email->server['user'], $email->server['name']); // De
+				$mail->setFrom($from[1], $from[0]); // De
 			}			
 
-			$mail->addAddress($sendTo["email"], $sendTo["name"]); // Para
+			$mail->addAddress($to[1], $to[0]); // Para
 			$mail->CharSet = 'UTF-8';
 		    $mail->isHTML(true);
 		    $mail->Subject = $subject;
@@ -84,22 +90,27 @@ class Email{
 		    }
 
 		    if($mail->send()){
-		    	return true;
+		    	return TRUE;
 		    }else{
-		    	return false;
+		    	$this->error = 'Error to processs. No more data.';
+		    	return $this->error;
 		    }
 		}catch(phpmailerException $e){
-			// self::$error = $e->errorMessage();
-			if($debug == true){
+			$this->error = $e->errorMessage();
+			
+			if($this->debug){
 				echo $e->errorMessage();
 			}
-			return false;
+
+			return $this->error;
 		}catch(Exception $e){
-			// self::$error = $mail->ErrorInfo;
-			if($debug == true){
+			$this->error = $mail->ErrorInfo;
+			
+			if($this->debug){
 				echo $mail->ErrorInfo;
 			}
-			return false;
+
+			return $this->error;
 		}
 	}
 

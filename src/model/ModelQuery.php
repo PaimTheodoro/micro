@@ -81,7 +81,7 @@ class ModelQuery{
             if(class_exists($field[0])){
                 $tableName = Model::getTable($field[0]);
                 
-                $getField = Model::getPropByColumn($field[0], $field[1]);
+                $getField = Model::getColumnByProp($field[0], $field[1]);
                 if(!empty($getField)){
                     $field[1] = $getField;
                 }
@@ -104,7 +104,7 @@ class ModelQuery{
 
                 if(count($explodeField) == 2){
                     if(class_exists($explodeField[0])){
-                        $getPropByColumn = Model::getPropByColumn($explodeField[0], $explodeField[1]);
+                        $getPropByColumn = Model::getColumnByProp($explodeField[0], $explodeField[1]);
                         if(!empty($getPropByColumn)){
                             $explodeField[1] = $getPropByColumn;
                         }
@@ -195,7 +195,7 @@ class ModelQuery{
 
                         if(!in_array($itemField, ['=', '<>'])){
                             if(isset($class)){
-                                $getField = Model::getPropByColumn($class, $itemField);
+                                $getField = Model::getColumnByProp($class, $itemField);
                                 if(!empty($getField)){
                                     $itemField = $getField;
                                 }
@@ -463,11 +463,17 @@ class ModelQuery{
     }
 
     public function fields(array|null $fields = null) : ModelQuery{
+        if(empty($fields)){
+            $this->query['fields'] = [];
+            return $this;    
+        }
+
         if(is_array($fields)){
             foreach($fields as $item){
                 $this->query['fields'][] = $this->generateField($item);
             }
         }
+
         return $this;
     }
 
@@ -490,7 +496,7 @@ class ModelQuery{
         return $this;
     }
 
-    public function leftJoin(array|string $table, string $query) : ModelQuery{
+    public function leftJoin(array|string|null $table, string $query) : ModelQuery{
         $this->query['leftJoins'][] = [
             "table" => $table, 
             "query" => $query
@@ -624,9 +630,13 @@ class ModelQuery{
 
                     $stringQuery .= " LEFT JOIN " . $tableName . " AS " .  $itemJoin['table'][1] . " ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
                 }else{
-                    $tableName = class_exists($itemJoin['table']) ? (new $itemJoin['table'])->getTableName() : $itemJoin['table'];
+                    if(!empty($itemJoin['table'])){
+                        $tableName = class_exists($itemJoin['table']) ? (new $itemJoin['table'])->getTableName() : $itemJoin['table'];
                     
-                    $stringQuery .= " LEFT JOIN " . $tableName . " ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
+                        $stringQuery .= " LEFT JOIN " . $tableName . " ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
+                    }else{
+                        $stringQuery .= " LEFT JOIN " . $this->handleExtraQuery($itemJoin['query']) . " ";
+                    }   
                 }
             }
         }
@@ -811,12 +821,15 @@ class ModelQuery{
         $this->query['limit'] = $itensPerPage;
         $this->query['offset'] = $initIn;
 
+        array_unshift($this->query['fields'], 'COUNT(' . $this->generateField([$this->obj::class, Model::getPrimaryKey($this->obj::class)[0]]) . ') OVER () AS totalItensFromPagination');
+
         $itens = $this->execute();
         if($itens == false){
             $itens = [];
         }
-        $total = $this->countAll();
 
+        $total = isset($itens[0]['totalItensFromPagination']) ? $itens[0]['totalItensFromPagination'] : 0;
+        
         $estimatedPages = ceil(
             $total / $itensPerPage
         );
@@ -835,6 +848,10 @@ class ModelQuery{
             ]
         ];
 
+        array_walk($itens, function (&$item) {
+            unset($item['totalItensFromPagination']);
+        });
+
         $result = [
             "itens" => $itens,
             "paginator" => $paginatorData
@@ -848,11 +865,11 @@ class ModelQuery{
     }
 
     public function query($query, $parseString = null, $database = 'default'){
-        if(isset($this->query['fields']) && !empty($this->query['fields'])){
+        if(!isset($this->query['fields']) || empty($this->query['fields'])){
+            $query = "* FROM " . $this->handleTableName() . " " . $query;
+        }else{
             $fieldsQuery = implode(", ", $this->query['fields']);
             $query = $fieldsQuery . " FROM " . $this->handleTableName() . " " . $query;
-        }else{
-            $query = "SELECT " . $query;
         }
 
         if(!empty($parseString) && is_array($parseString)){
@@ -871,11 +888,11 @@ class ModelQuery{
 
         $Read = new \Prospera\Database\Read($this->obj->databaseConnect ?? null);
         $Read->exe(
-            table: Model::getTable($this->obj::class),
-            string: $query,
-            parseString: $stringParseString,
-            database: $database,
-            free: true
+            $this->obj->table,
+            $query,
+            $stringParseString,
+            $database,
+            true
         ); 
 
         return $this->queryResult($Read);
@@ -928,14 +945,14 @@ class ModelQuery{
         return '`' . Model::getTable($this->obj::class) . '`.*';
     }
 
-    public function leftJoinAndSelect(array|string $table, string $attr, string $query){
+    public function leftJoinAndSelect(array|string $table, string $attr, string $query, array $fields = []){
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
-        $columns = Model::getColumnByProp(is_array($table) ? $table[0] : $table);
+        $columns = Model::getColumnByProp((is_array($table) ? $table[0] : $table), $fields);
 
         if(!empty($columns) && is_array($columns)){
             if($driver == DBDriver::MySQL){
                 $fieldsToAdd = array_map(function($item) use ($table, $attr){
-                    $field = (is_array($table) ? $table[1] : $table) . '.' . $item . ' AS ' . $attr . '_' . $item;
+                    $field = (is_array($table) ? $table[1] : $table) . '.' . $item . ' AS ' . str_replace('.', '#', $attr) . '_' . $item;
                     return $this->generateField($field);
                 }, $columns);
             }

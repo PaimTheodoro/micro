@@ -285,15 +285,15 @@ class Model{
 	}
 
 	public function getIdentityColumn(){
-		$configDb 	= \PSF::getConfig()->db[Model::getDatabase($this)];
-		$driver 	= !empty($configDb['driver']) ? $configDb['driver'] : DBDriver::MySQL;
+		$configDb 	= \PSF::getConfig()->db;
+		$driver 	= !empty($configDb[$this->database]['driver']) ? $configDb[$this->database]['driver'] : DBDriver::MySQL;
 
-		$db = Connect::getConnection(Model::getDatabase($this));
+		$db = Connect::getConnection($this->database);
 
 		if($driver == DBDriver::SQLServer){
 			$query = "SELECT COLUMN_NAME
 			FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_NAME = '" . $this->getTableName() . "' AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
+			WHERE TABLE_NAME = '" . $this->table . "' AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
 		}
 
 		if(isset($query)){
@@ -376,12 +376,20 @@ class Model{
 							}
 						}
 					}
+
+					if(isset($data[$property->getName()])){
+						if(!$property->isStatic()){
+							$response->{$property->getName()} = $data[$property->getName()];
+						}
+					}
 				}
 			}
 		}else{
 			$response = [];
 			
 			foreach(array_keys($data) as $key){
+				// var_dump($data);
+
 				$findColumnExist = array_values(array_filter($refClass->getProperties(), function($prop) use ($key){
 					$attributes = $prop->getAttributes();
 
@@ -398,7 +406,70 @@ class Model{
 
 				if(!empty($findColumnExist)){
 					$response[$findColumnExist[0]->getName()] = $data[$key];
+
+					$verifyIsEnum = Model::propIsEnum($class, Model::getPropByColumn($class, $key));
+					if(!empty($verifyIsEnum)){
+						
+					}
 				}else{
+					if(!empty($joins)){
+						$findJoinForProperty = array_filter($joins, function($item) use ($key){
+							return !empty($item['andSelect']) && $item['andSelect'];
+						});
+
+						if(!empty($findJoinForProperty)){
+							$findJoinForProperty = $findJoinForProperty[0];
+							
+							if(str_starts_with($key, $findJoinForProperty['andSelect'] . '_')){
+								$classRelation = is_array($findJoinForProperty['table']) ? $findJoinForProperty['table'][0] : $findJoinForProperty['table'];
+
+								$objectField = explode('_', $key);
+								// var_dump($objectField);
+								unset($objectField[0]); 
+
+								$getColumnRelation = Model::getPropByColumn($classRelation, implode('_', $objectField));
+
+								if(!empty($getColumnRelation)){
+									$response[$findJoinForProperty['andSelect']][$getColumnRelation] = $data[$key];
+								// 	$response->{$findJoinForProperty['andSelect']}->{$getColumnRelation} = $value;
+									continue;
+								}	
+							}else if(str_starts_with($key, $findJoinForProperty['andSelect'] . '#')){
+								$classRelation = is_array($findJoinForProperty['table']) ? $findJoinForProperty['table'][0] : $findJoinForProperty['table'];
+
+								$objectField = explode('#', $key);
+
+								$newFields = $objectField;
+								unset($newFields[0]);
+
+								$newFields = implode('_', $newFields);
+								$objectFieldAttr = explode('_', $newFields);
+
+								$findJoinForPropertyTwo = array_values(array_filter($joins, function($item) use ($objectField, $objectFieldAttr){
+									return !empty($item['andSelect']) && ($item['andSelect'] == ($objectField[0] . '.' . $objectFieldAttr[0]));
+								}));
+
+								if($findJoinForPropertyTwo){
+									$findJoinForPropertyTwo = $findJoinForPropertyTwo[0];
+									$classRelationTwo = is_array($findJoinForPropertyTwo['table']) ? $findJoinForPropertyTwo['table'][0] : $findJoinForPropertyTwo['table'];
+
+									$fieldTwo = $objectFieldAttr[0];
+									unset($objectFieldAttr[0]);
+									$objectFieldAttr = array_values($objectFieldAttr);
+									$getColumnRelation = Model::getPropByColumn($classRelationTwo, implode('_', $objectFieldAttr));
+									
+									if(!empty($getColumnRelation)){
+										// var_dump($getColumnRelation);
+										// var_dump($objectFieldAttr);
+										$response[$findJoinForProperty['andSelect']][$fieldTwo][$getColumnRelation] = $data[$key];
+										continue;
+									}
+									
+								}
+							}
+						}
+					}
+
 					$response[$key] = $data[$key];
 				}
 			}
@@ -408,24 +479,52 @@ class Model{
 	}
 
 	public static function getPropByColumn($class, $column){
+		// var_dump($class);
+		// var_dump($column);
+
 		$refClass = new \ReflectionClass($class);
-        $findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($column){
-            return $column === $item->getName();
-        }));
 
-        if(!empty($findPropertie)){
-            $attributes = $findPropertie[0]->getAttributes();
+		if(!empty($refClass->getProperties())){
+			foreach ($refClass->getProperties() as $prop) {
+				$getAttrs = $prop->getAttributes();
 
-            $column = array_values(array_filter($attributes, function($attr){
-                return $attr->getName() === 'Column';
-            }));
+				if(!empty($getAttrs)){
+					$findColumn = array_values(array_filter($getAttrs, function($attr){
+		                return $attr->getName() === 'Column';
+		            }));
 
-            if(!empty($column)){
-                return $column[0]->getArguments()[0];
-            }
-        }
+		            if(!empty($findColumn)){
+		            	if($findColumn[0]->getArguments()[0] == $column){
+		            		return $prop->getName();
+		            		break;
+		            	}
+		            }
+				}
+			}
+		}
 
 		return FALSE;
+		
+        // $findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($column){
+        // 	var_dump($item);
+
+        //     return $column === $item->getName();
+        // }));
+
+        // if(!empty($findPropertie)){
+        //     $attributes = $findPropertie[0]->getAttributes();
+
+        //     $column = array_values(array_filter($attributes, function($attr){
+        //         return $attr->getName() === 'Column';
+        //     }));
+
+        //     if(!empty($column)){
+        //     	echo "sim";
+        //         return $column[0]->getArguments()[0];
+        //     }
+        // }
+
+		// return FALSE;
 	}
 
 	public static function getPrimaryKey($class, $type = 'column'){
@@ -452,9 +551,15 @@ class Model{
 		$refClass = new \ReflectionClass($class);
 
 		if(!empty($prop)){
-	        $findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($prop){
-	            return $prop === $item->getName();
-	        }));
+			if(is_array($prop)){
+				$findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($prop){
+		            return in_array($item->getName(), $prop);
+		        }));
+			}else{
+		        $findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($prop){
+		            return $prop === $item->getName();
+		        }));
+		    }
 	    }else{
 	    	$findPropertie = $refClass->getProperties();
 	    }
@@ -472,9 +577,36 @@ class Model{
 	            }
         	}
 
-        	return empty($prop) ? $columns : (!empty($columns) ? $columns[0] : FALSE);
+        	return empty($prop) || is_array($prop) ? $columns : (!empty($columns) ? $columns[0] : FALSE);
         }
 
 		return FALSE;
+	}
+
+	public static function propIsEnum($class, $property){
+		$refClass = new \ReflectionClass($class);
+
+		$findPropEnum = array_values(array_filter(array_map(function($prop) use ($property){
+			if($prop->getName() != $property){
+				return FALSE;
+			}
+
+			$attributes = $prop->getAttributes();
+
+			$enum = array_values(array_filter($attributes, function($attr) use ($prop, $property){
+				return $attr->getName() === 'Enum';
+			}));
+
+			if(empty($enum)){
+				return FALSE;
+
+			}else{
+				$enum = $enum[0]->getArguments()[0];
+
+				return $enum;
+			}
+		}, $refClass->getProperties()), fn($if) => !empty($if)));
+
+		return empty($findPropEnum) ? FALSE : $findPropEnum[0]; 
 	}
 }

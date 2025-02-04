@@ -5,7 +5,7 @@ namespace Psf\Database;
 class Delete extends Connect{
     private $table;
     private $terms;
-    private $palces;
+    private $places;
     private $result;
     private $delete;
     private $connection;
