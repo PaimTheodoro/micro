@@ -8,6 +8,7 @@ Ignition::make()
 
 define('DR', DIRECTORY_SEPARATOR);
 define('ROOT', realpath($_SERVER['DOCUMENT_ROOT'] ?: dirname(__FILE__)));
+define('Psf', (new PSF));
 
 use \Psf\Http\Http;
 
@@ -25,6 +26,22 @@ class PSF{
 
     public static function getConfig(){
         return (object) self::$config;
+    }
+
+    public static function config(...$args){
+        $value = self::$config;
+
+        if(!empty($args)){
+            foreach($args as $arg){
+                if(!isset($value[$arg])){
+                    return FALSE;
+                }
+
+                $value = $value[$arg];                
+            }
+        }
+
+        return $value; 
     }
 }
 
