@@ -2,6 +2,8 @@
 
 namespace Psf\Utils;
 
+use \Aws\S3\S3Client;
+
 class CloudStorage{
 	public static function connect(){
 		$configAws = \PSF::getConfig()->aws;
@@ -17,7 +19,7 @@ class CloudStorage{
 			];
 
 			try {
-				$s3Client = new \Aws\S3\S3Client($options);
+				$s3Client = new S3Client($options);
 			} catch (Exception $e) {
 				return false;
 			}
@@ -26,16 +28,17 @@ class CloudStorage{
 		return $s3Client;
 	} 
 
-	public static function putObject(\Aws\S3\S3Client $connect, string $filename, $atualpath, string $acl = 'public-read', string $filetype = 'binary'){
+	public static function putObject(S3Client $connect, string $filename, $atualpath, string $acl = 'public-read', string $filetype = 'binary'){
 		$configAws = \PSF::getConfig()->aws;
 
 		if(strtoupper($configAws['provider']) == 'R2'){
 			try {
 			    $put = $connect->putObject([
-			        'Bucket' => $configAws['bucket'],
-			        'Key'    => $filename,
-			        'Body'   => $filetype == 'path' ? fopen($atualpath, 'r') : $atualpath,
-			        'ACL'    => $acl,
+			        'Bucket' 		=> $configAws['bucket'],
+			        'Key'    		=> $filename,
+			        'Body'   		=> $filetype == 'path' ? fopen($atualpath, 'r') : $atualpath,
+			        'ACL'    		=> $acl,
+			        'ContentType' 	=> mime_content_type($atualpath)
 			    ]);
 
 			    return $put;

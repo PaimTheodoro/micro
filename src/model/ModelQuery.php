@@ -71,7 +71,7 @@ class ModelQuery{
 
     private function generateField($field){
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
-        $arrIgnoreRules = ['SUM', 'COUNT', 'MAX'];
+        $arrIgnoreRules = ['SUM', 'COUNT', 'MAX', 'LEFT'];
 
         if(is_array($field)){
             if($field[0] == 'subquery'){
@@ -99,7 +99,7 @@ class ModelQuery{
 
             return $result . (!empty($field[2]) ? (' AS ' . $field[2]): '');           
         }else if(is_string($field)){
-            if(!empty(Model::getTable($this->obj)) && !in_array(substr($field, 0, 5), $arrIgnoreRules) && !in_array(substr($field, 0, 3), $arrIgnoreRules)){
+            if(!empty(Model::getTable($this->obj)) && !in_array(substr($field, 0, 5), $arrIgnoreRules) && !in_array(substr($field, 0, 4), $arrIgnoreRules) && !in_array(substr($field, 0, 3), $arrIgnoreRules)){
                 $explodeField = explode(".", $field);
 
                 if(count($explodeField) == 2){

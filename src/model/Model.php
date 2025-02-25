@@ -79,7 +79,7 @@ class Model{
 		return Connect::getColunsForTable(Model::getTable($this), Model::getDatabase($this));
 	}
 
-	public static function serializeFields($object) : array{
+	public static function serializeFields($object, $removePrimarys = FALSE) : array{
 		$refClass = new \ReflectionClass($object::class);
 		foreach($refClass->getProperties() as $property){
 			$attributes = $property->getAttributes();
@@ -90,6 +90,16 @@ class Model{
 
 			if(!empty($column)){
 				$column = $column[0]->getArguments()[0];
+
+				if($removePrimarys){
+					$isPrimaryKey = array_values(array_filter($attributes, function($attr) use ($property){
+						return $attr->getName() === 'PrimaryKey';
+					}));
+
+					if(!empty($isPrimaryKey)){
+						continue;
+					}
+				}
 
 				$typeValue = array_values(array_filter($attributes, function($attr) use ($property){
 					return $attr->getName() === 'Type' && !empty($attr->getArguments()[0]);
@@ -175,7 +185,7 @@ class Model{
 	}
 
 	public function create(){
-		$fields = Model::serializeFields($this);
+		$fields = Model::serializeFields(object: $this, removePrimarys: TRUE);
 
 		$Create = Create::exe(
 			table: Model::getTable($this), 
