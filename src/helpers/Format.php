@@ -20,7 +20,11 @@ class Format{
 		return FALSE;
 	}
 
-	public static function phone(string|int $number = null) : bool|string{
+	public static function phone($number = null) : bool|string|null{
+		if(empty($number)){
+			return NULL;
+		}
+
 		$number = preg_replace("/[^0-9]/", "", $number);
 
 		if(!empty($number)){
@@ -52,7 +56,11 @@ class Format{
 		return FALSE;
 	}
 
-	public static function document(int|string $number) : string{
+	public static function document($number) : null|string{
+		if(empty($number)){
+			return NULL;
+		}
+
 		$number = preg_replace("/[^0-9]/", "", $number);
 
 		if(strlen($number) === 11){
@@ -64,7 +72,11 @@ class Format{
 		return $number;	
 	}
 
-	public static function cep(int|string $number) : int|string{
+	public static function cep($number) : int|string|null{
+		if(empty($number)){
+			return NULL;
+		}
+
 		$number = preg_replace("/[^0-9]/", "", $number);
 
         $matches = [];
