@@ -38,7 +38,7 @@ class Read extends Connect{
         $this->read = $this->connection->prepare($this->select);
         $this->read->setFetchMode(\PDO::FETCH_ASSOC);
 
-        if(in_array($table, parent::$tables[$database])){
+        if(in_array($table, parent::$tables[$database]) || str_starts_with($table, 'v_') || str_starts_with($table, 'view_')){
             $this->execute();
             return $this;
         }else{
