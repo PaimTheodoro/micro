@@ -16,6 +16,9 @@
         "spatie/ignition": "^1.11"
     },
     "autoload": {
+        "files": [
+            "settings.php"
+        ],
         "psr-4": {
             "Psf\\": "src/"
         }
