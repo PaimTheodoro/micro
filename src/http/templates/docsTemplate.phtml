@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Documentação da API</title>
+    <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+    <link href="https://cdn.porglin.com/css/bootstrap/bootstrap.min.css" rel="stylesheet" type="text/css">
+    <link href="https://cdn.porglin.com/css/pg/pg.css" rel="stylesheet" type="text/css">
+    <link href="https://cdn.porglin.com/css/fonts/icons.min.css" rel="stylesheet" type="text/css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet" type="text/css">
+    <link href="" rel="shortcut icon" type="image/x-icon">
+    <style>
+        .headerDocs{ background: #ddd; height: 72.5px; }
+        .contentFinal{ height: calc(100vh - 72.5px); overflow-y: auto; }
+        .sidebar{ background: #eee; width: 400px; height: calc(100vh - 72.5px); }
+        .sidebar .searchBar{ height: 75px; }
+        .sidebar .contentRequestList{ height: calc(100vh - 147.5px); overflow-y: auto; }
+        .requestPlayground{ background: #2B2D34; width: 35vw; border-bottom: 2px solid #3A3D47; }
+        .itemRequest .docReal{ border-bottom: 2px dashed #ddd; padding-bottom: 30px; }
+        .itemRequest .docReal .name{ font-weight: 700; padding: 0px; margin-left: 30px; margin-top: 20px; font-size: 1.2rem; color: #444; height: 30px; line-height: 30px; }
+        .itemRequest .docReal .methodLabel{ height: 25px; background: #eee; margin-right: 30px; margin-top: 20px; border-radius: 5px; padding: 0px 10px; text-transform: uppercase; font-weight: 700; font-size: 0.8rem; line-height: 25px; color: #FFF; }
+        .itemRequest .docReal .contentType{ height: 25px; margin-right: 30px; margin-top: 22.5px; border-radius: 5px; padding: 0px; font-weight: 600; font-size: 0.85rem; line-height: 20px; color: #666; user-select: all; }
+        .itemRequest .docReal .methodLabel.put{ background: #ff9a29; }
+        .itemRequest .docReal .methodLabel.get{ background: #6058ff; }
+        .itemRequest .docReal .methodLabel.post{ background: #35b062; }
+        .itemRequest .docReal .methodLabel.delete{ background: red; }
+        .itemRequest .docReal .description{ padding: 0px; margin: 15px 30px 0px 30px; font-size: 0.9rem; color: #666; }
+        .itemRequest .docReal .description span{ color: #315ebc; font-weight: 600; }
+        .itemRequest .docReal .uri{ background: #eee; margin: 20px 30px 0px 30px; border-radius: 5px; }
+        .itemRequest .docReal .uri .methodLabel{ margin: 10px 0px 10px 10px; }
+        .itemRequest .docReal .uri .final{ padding: 0px; margin-left: 15px; line-height: 22.5px; color: #666; font-weight: 500; font-size: 0.9rem; user-select: all; margin-top: 10px; }
+        .itemRequest .docReal .uri .iconCopy{ line-height: 32.5px; margin-top: 5px; padding: 0px; font-size: 1.2rem; color: #315ebc; cursor: pointer; margin-right: 12.5px; }
+        .itemRequest .docReal .titleSect{ padding: 0px; margin-left: 30px; font-weight: 600; font-size: 1.1rem; color: #666; }
+        .itemRequest .docReal .paramnsList{ margin-top: 25px; }
+        .itemRequest .docReal .paramnsList .finalList{ border: 1px solid #eee; border-radius: 5px; margin: 7.5px 30px 0; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal{ border-top: 1px dashed #ddd; min-height: 50px; padding-bottom: 15px; }
+        .itemRequest .docReal .paramnsList .finalList .row:last-of-type .itemFinal{ border-bottom: 0px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .descriptionField{ padding: 0px; width: 50%; font-size: 0.85rem; margin: 15px 15px 0px 15px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .descriptionField span{ font-weight: 500; color: #315ebc; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .nameField{ padding: 0px; margin-left: 15px; margin-top: 15px; font-weight: 600; font-size: 0.925rem; color: #315ebc; height: 25px; line-height: 25px; user-select: all; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .typeField{ font-size: 0.85rem; margin-top: 15px; height: 25px; line-height: 25px; padding: 0px; margin-left: 12.5px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .requiredField{ padding: 0px; margin-left: 12.5px; margin-top: 15px; font-size: 0.7rem; font-weight: 600; color: red; line-height: 25px; height: 25px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .childList{ border-left: 3px solid #eee; margin-left: 15px; margin-top: 15px; border-top: 1px dashed #ddd; border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .childList .childItem{ padding-bottom: 7.5px; border-bottom: 1px dashed #ddd; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .childList .childItem .nameField{ margin-left: 12.5px; margin-top: 7.5px; font-size: 0.875rem; height: 20px; line-height: 20px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .childList .childItem .typeField{ font-size: 0.8rem; margin-top: 7.5px; height: 20px; line-height: 20px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .childList .childItem .requiredField{ margin-top: 7.5px; height: 20px; line-height: 20px; }
+        .itemRequest .docReal .paramnsList .finalList .itemFinal .childList .childItem .descriptionField{ width: calc(50% + 7.5px); font-size: 0.85rem; margin: 7.5px 15px 0px 15px; }
+        .itemRequest .docReal .paramnsList .finalList .headerItem{ background: #eee; line-height: 40px; height: 40px; text-align: center; text-transform: uppercase; font-size: 0.8rem; font-weight: 600; color: #666; margin-bottom: -1px; z-index: 1; }
+        .itemRequest .docReal .authConfig{ margin-top: 30px; }
+        .itemRequest .docReal .authType{ margin-top: 5px; border-radius: 5px; background: #eee; margin-left: 30px; margin-right: 30px; line-height: 42.5px; }
+        .itemRequest .docReal .authType .icon{ padding: 0px; margin-left: 12.5px; color: #34bf23; font-size: 1.1rem; }
+        .itemRequest .docReal .authType .text{ padding: 0px; margin-left: 12.5px; color: #666; font-weight: 500; font-size: 0.9rem; }
+        .itemRequest .docReal .authType span{ color: #315ebc; font-weight: 600; }
+        .swal-overlay { z-index: 99999999999999999999999 !important; background: rgba(0,0,0,0.8); }
+        .swal-modal { z-index: 9999999999999999999999999999 !important; }
+        .swal-text { text-align: center; }
+    </style>
+</head>
+<body>
+    <noscript><p>JavaScript desabilitado!</p></noscript>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col headerDocs">Documentação da API</div>
+        </div>
+        <div class="row">
+            <div class="col-auto sidebar">
+                <div class="row">
+                    <div class="col searchBar"></div>
+                </div>
+                <div class="row">
+                    <div class="col contentRequestList"></div>
+                </div>
+            </div>
+            <div class="col contentFinal">
+                <?php foreach ($requests as $request): ?>
+                    <?php
+                    $url = $request['uri'];
+                    preg_match_all('/{([^:]+):([^}]+)}/', $request['uri'], $matches);
+                    if (!empty($matches[1])) {
+                        foreach ($matches[1] as $key => $match) {
+                            $url = str_replace("{" . $match . ":" . $matches[2][$key] . "}", ":" . $match, $request['uri']);
+                        }
+                    }
+                    ?>
+                    <div class="row">
+                        <div class="col itemRequest">
+                            <div class="row">
+                                <div class="col docReal">
+                                    <div class="row">
+                                        <div class="col name"><?= htmlspecialchars($request['title']) ?></div>
+                                        <div class="col-auto contentType">
+                                            <?php
+                                            if (!isset($request['contentType']) || empty($request['contentType'])) {
+                                                echo 'Without Content';
+                                            } else {
+                                                echo htmlspecialchars($request['contentType'] === 'json' ? 'application/json' : ($request['contentType'] === 'form-data' ? 'multipart/form-data' : $request['contentType']));
+                                            }
+                                            ?>
+                                        </div>
+                                    </div>
+
+                                    <?php if (isset($request['description']) && !empty($request['description'])): ?>
+                                        <div class="row">
+                                            <div class="col description"><?= $request['description'] ?></div>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <div class="row">
+                                        <div class="col uri">
+                                            <div class="row">
+                                                <div class="col-auto methodLabel <?= strtolower(htmlspecialchars($request['method'])) ?>"><?= htmlspecialchars($request['method']) ?></div>
+                                                <div class="col final">v<?= htmlspecialchars($request['version']) ?>/<?= htmlspecialchars($url) ?></div>
+                                                <div class="col-auto iconCopy"><i class="fal fa-copy"></i></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <?php if ($request['protected']): ?>
+                                        <div class="row">
+                                            <div class="col authConfig">
+                                                <div class="row"><div class="col titleSect">Autenticação</div></div>
+                                                <div class="row">
+                                                    <div class="col authType">
+                                                        <div class="row">
+                                                            <div class="col-auto icon"><i class="far fa-lock-alt"></i></div>
+                                                            <div class="col-auto text">
+                                                                <?php
+                                                                if (!isset($request['authentication']) || empty($request['authentication'])) {
+                                                                    echo 'Esse endpoint requer autenticação';
+                                                                } else {
+                                                                    $authTypes = array_map(function ($itemAuth) {
+                                                                        $type = strtolower($itemAuth);
+                                                                        if ($type === 'bearer') return '<span>Bearer Token</span>';
+                                                                        if ($type === 'basic') return '<span>Basic Auth</span>';
+                                                                        return '<span>' . htmlspecialchars($itemAuth) . '</span>';
+                                                                    }, explode('/', $request['authentication']));
+                                                                    echo 'Esse endpoint requer autenticação com ' . implode(' ou ', $authTypes);
+                                                                }
+                                                                ?>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if (isset($request['fields']) && count($request['fields']) > 0): ?>
+                                        <div class="row">
+                                            <div class="col paramnsList">
+                                                <div class="row"><div class="col titleSect">Parâmetros</div></div>
+                                                <div class="row">
+                                                    <div class="col finalList">
+                                                        <?php
+                                                        $groupedFields = ['urlcomponent' => '', 'urlparam' => '', 'body' => ''];
+                                                        foreach ($request['fields'] as $field) {
+                                                            ob_start();
+                                                            include __DIR__ . '/docFieldTemplate.phtml';
+                                                            $groupedFields[$field['location']] .= ob_get_clean();
+                                                        }
+                                                        
+                                                        if (!empty($groupedFields['urlcomponent'])) {
+                                                            echo '<div class="row"><div class="col headerItem">Componentes da URL</div></div>' . $groupedFields['urlcomponent'];
+                                                        }
+                                                        if (!empty($groupedFields['urlparam'])) {
+                                                            echo '<div class="row"><div class="col headerItem">Parametros na URL</div></div>' . $groupedFields['urlparam'];
+                                                        }
+                                                        if (!empty($groupedFields['body'])) {
+                                                            echo '<div class="row"><div class="col headerItem">Parametros no Corpo da Requisição</div></div>' . $groupedFields['body'];
+                                                        }
+                                                        ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="col-auto requestPlayground">Playground</div>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.porglin.com/js/jquery/jquery.min.js"></script>
+    <script src="https://cdn.porglin.com/js/bootstrap/bootstrap.min.js"></script>
+    <script src="https://cdn.porglin.com/js/sweetalert/sweetalert.min.js"></script>
+    <script src="https://cdn.porglin.com/js/pg/pg.js"></script>
+    <script>
+        $(document).on("click", ".itemRequest .docReal .uri .iconCopy", function(){
+            var getUrl = $(this).closest(".uri").find(".final").text().trim();
+            pg.copyToClipboard(getUrl);
+            swal("URL Copiada!", "A URL da requisição foi copiada para área de transferência", "success", {
+                buttons: false,
+                closeOnClickOutside: false,
+                closeOnEsc: false,
+                timer: 2500
+            });
+        });
+    </script>
+</body>
+</html> 

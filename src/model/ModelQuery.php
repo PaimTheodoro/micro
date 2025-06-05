@@ -3,6 +3,7 @@
 namespace Psf\Model;
 
 use \Psf\Enumerators\{DBDriver};
+use Psf\Model\MetadataCache;
 
 class ModelQuery{
     private $obj;
@@ -26,28 +27,28 @@ class ModelQuery{
             'freequery'     => NULL,
             'isCount'       => FALSE,
             'asArray'       => FALSE,
-            'database'      => Model::getDatabase($class) ?? 'default'
+            'database'      => MetadataCache::getDatabase($class) ?? 'default'
         ];
 
-        $this->configDb = \PSF::getConfig()->db[Model::getDatabase($class)]; 
+        $this->configDb = \PSF::getConfig()->db[MetadataCache::getDatabase($class)]; 
     }
 
     private function getDatabaseName() : string{
-        return \PSF::getConfig()->db[Model::getDatabase($this->obj::class)]['database'];
+        return \PSF::getConfig()->db[MetadataCache::getDatabase($this->obj::class)]['database'];
     }
 
     private function handleTableName() : string{
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
         
         if($driver == DBDriver::MySQL){
-            return '`' . $this->getDatabaseName() . '`.`' . Model::getTable($this->obj::class) . '`';
+            return '`' . $this->getDatabaseName() . '`.`' . MetadataCache::getTable($this->obj::class) . '`';
         }
 
         if($driver == DBDriver::SQLServer){
-            return '[' . $this->getDatabaseName() . '].[dbo].[' . Model::getTable($this->obj::class) . ']';
+            return '[' . $this->getDatabaseName() . '].[dbo].[' . MetadataCache::getTable($this->obj::class) . ']';
         }
 
-        return $this->getDatabaseName() . '.' . Model::getTable($this->obj::class);
+        return $this->getDatabaseName() . '.' . MetadataCache::getTable($this->obj::class);
     }
 
     public static function getHandleTableName(string $table, string $database = 'default') : string{
@@ -69,113 +70,87 @@ class ModelQuery{
         return ['=', '<>', '>', '<', 'IS NULL', 'IS NOT NULL', 'LIKE'];
     }
 
+    /**
+     * Gera uma string de campo SQL totalmente qualificada e citada.
+     * Este método lida com vários formatos de entrada (strings, arrays) para definir campos,
+     * resolve nomes de classe/propriedade para nomes de tabela/coluna e aplica a citação correta
+     * do banco de dados para identificadores e aliases.
+     *
+     * @param mixed $field O campo a ser processado.
+     * @return string O campo SQL gerado.
+     */
     private function generateField($field){
-        $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
-        $arrIgnoreRules = ['SUM', 'COUNT', 'MAX', 'LEFT'];
-
-        if(is_array($field)){
-            if($field[0] == 'subquery'){
-                return $field[1];
+        // Mantém a lógica para ignorar funções SQL e subqueries
+        if(is_string($field)){
+            $upperField = strtoupper($field);
+            if(str_starts_with($upperField, 'SUM(') || str_starts_with($upperField, 'COUNT(') || str_starts_with($upperField, 'MAX(') || str_starts_with($upperField, 'LEFT(')){
+                return $field;
             }
-            
-            if(class_exists($field[0])){
-                $tableName = Model::getTable($field[0]);
-                
-                $getField = Model::getColumnByProp($field[0], $field[1]);
-                if(!empty($getField)){
-                    $field[1] = $getField;
-                }
-            }else{
-                $tableName = $field[0];
-            }
-
-            if($driver == DBDriver::MySQL){
-                $result = $tableName . ".`" . $field[1] . "`";
-            }
-
-            if($driver == DBDriver::SQLServer){
-                $result =  "[" . $tableName . "].[" . $field[1] . "]";
-            }
-
-            return $result . (!empty($field[2]) ? (' AS ' . $field[2]): '');           
-        }else if(is_string($field)){
-            if(!empty(Model::getTable($this->obj)) && !in_array(substr($field, 0, 5), $arrIgnoreRules) && !in_array(substr($field, 0, 4), $arrIgnoreRules) && !in_array(substr($field, 0, 3), $arrIgnoreRules)){
-                $explodeField = explode(".", $field);
-
-                if(count($explodeField) == 2){
-                    if(class_exists($explodeField[0])){
-                        $getPropByColumn = Model::getColumnByProp($explodeField[0], $explodeField[1]);
-                        if(!empty($getPropByColumn)){
-                            $explodeField[1] = $getPropByColumn;
-                        }
-
-                        if($driver == DBDriver::MySQL){
-                            $field = '`' . (new $explodeField[0])->getTableName() . '`' . ($this->handleAliasField($explodeField[1]));
-                        }
-
-                        if($driver == DBDriver::SQLServer){
-                            $field = '[' . (new $explodeField[0])->getTableName() . ']' . $this->handleAliasField($explodeField[1]);
-                        }
-
-                        if(!isset($field)){
-                            $field = (new $explodeField[0])->getTableName() . ($this->handleAliasField($explodeField[1]));
-                        }
-                    }else{
-                        $field = ($explodeField[0] . $this->handleAliasField($explodeField[1]));
-                    }
-
-                    return $field;
-                }else if(count($explodeField) > 2){
-                    return $field;
-                }else{
-                    if($driver == DBDriver::MySQL){
-                        return Model::getTable($this->obj::class) . ".`" . $field . "`";
-                    }
-
-                    if($driver == DBDriver::SQLServer){
-                        // return '[' . $this->obj->tableName . "].[" . $field . "]";
-                        return "[" . Model::getTable($this->obj::class) . "].[" . $field . "]";
-                    }
-
-                    return Model::getTable($this->obj::class) . "." . $field;
-                }
-            }
-        }else if(is_object($field) && isset($field->Field)){    
+        }
+        if(is_array($field) && isset($field[0]) && $field[0] === 'subquery'){
+            return $field[1];
+        }
+        if(is_object($field) && isset($field->Field)){
             return $field->Field;
         }
 
-        return $field;
-    }
+        // 1. Normaliza o input (string, array) para partes [tabela, coluna, alias]
+        $tableOrClass = null;
+        $columnOrProp = null;
+        $alias = null;
 
-    private function handleAliasField(string $field) : string{
-        $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
+        if(is_string($field)){
+            $parts = preg_split('/\s+as\s+/i', $field);
+            $fieldDefinition = $parts[0];
+            $alias = $parts[1] ?? null;
 
-        $explodeAs = explode(' ', $field);
-
-        if(in_array('as', $explodeAs) || in_array('AS', $explodeAs)){
-            if($driver == DBDriver::MySQL){
-                return '.`' . $explodeAs[0] . '` AS `' . $explodeAs[2] . '`';
+            $fieldParts = explode('.', $fieldDefinition);
+            if(count($fieldParts) === 2){
+                [$tableOrClass, $columnOrProp] = $fieldParts;
+            } else {
+                $columnOrProp = $fieldParts[0];
             }
-
-            if($driver == DBDriver::SQLServer){
-                return '.[' . $explodeAs[0] . '] AS [' . $explodeAs[2] . ']';
-            }            
-
-            return '.' . $explodeAs[0] . ' AS ' . $explodeAs[2];
-        }   
-
-        if($field == '*'){
-            return '.' . $field;
+        } elseif (is_array($field)){
+            [$tableOrClass, $columnOrProp] = $field;
+             $alias = $field[2] ?? null;
+        } else {
+             return (string) $field; // Fallback para tipos inesperados
         }
 
-        if($driver == DBDriver::MySQL){
-            return '.`' . $field . '`';
+        // 2. Resolve classe para nome de tabela e propriedade para nome de coluna
+        if($tableOrClass && class_exists($tableOrClass)){
+            $table = MetadataCache::getTable($tableOrClass);
+            $column = MetadataCache::getColumnByProp($tableOrClass, $columnOrProp) ?? $columnOrProp;
+        } else {
+            $table = $tableOrClass;
+            $column = $columnOrProp;
         }
 
-        if($driver == DBDriver::SQLServer){
-            return '.[' . $field . ']';
+        // Se nenhuma tabela foi definida, usa a tabela do modelo atual
+        if($column === '*'){
+            $table = $table ?? MetadataCache::getTable($this->obj::class);
+        } else if(empty($table)){
+            $table = MetadataCache::getTable($this->obj::class);
         }
-    }   
+        
+        // 3. Monta a string final com a citação correta
+        $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
+        
+        $quote = function(string $identifier) use ($driver): string {
+            if ($identifier === '*') return '*';
+            if ($driver === DBDriver::MySQL) return '`' . str_replace('`', '``', $identifier) . '`';
+            if ($driver === DBDriver::SQLServer) return '[' . str_replace(']', ']]', $identifier) . ']';
+            return $identifier;
+        };
+
+        $compiledField = $quote($table) . '.' . $quote($column);
+        
+        if($alias){
+            $compiledField .= ' AS ' . $quote($alias);
+        }
+
+        return $compiledField;
+    }
 
     private function handleExtraQuery($query){
         $explodeSpaces = explode(' ', $query);
@@ -195,7 +170,7 @@ class ModelQuery{
 
                         if(!in_array($itemField, ['=', '<>'])){
                             if(isset($class)){
-                                $getField = Model::getColumnByProp($class, $itemField);
+                                $getField = MetadataCache::getColumnByProp($class, $itemField);
                                 if(!empty($getField)){
                                     $itemField = $getField;
                                 }
@@ -213,128 +188,11 @@ class ModelQuery{
         return $query;
     }   
 
-    public function andWhere(string|array $query, array|null $parses = null) : ModelQuery{
-        $parse = uniqid();
-
-        if(is_array($query)){
-            if(count($query) === 1){
-                $this->query['parses'][$parse] = $query[array_keys($query)[0]];
-                $this->query['wheres'][] = $this->generateField(array_keys($query)[0]) . " = :" . $parse;
-            }
-
-            if(count($query) === 2){
-                if($query[0] == "OR" && is_array($query[1])){
-                    $stringFinal = "(";
-                    $countItens = 0;
-                    foreach($query[1] as $key => $value){
-                        if(is_array($value)){
-                            if(count($value) == 1){
-                                $parse = uniqid();
-                                $this->query['parses'][$parse] = $value[array_keys($value)[0]];
-                                $stringFinal .= $this->generateField(array_keys($value)[0]) . " = :" . $parse;
-                                if($countItens < count($query[1]) - 1){
-                                    $stringFinal .= " OR ";
-                                }
-                                $countItens++;
-                            }else if(count($value) == 3){
-                                if(in_array($value[1], $this->getAcceptComparativeOperators())){
-                                    if($value[1] == "IS NULL" || $value[1] == "IS NOT NULL"){
-                                        $stringFinal .= $this->generateField($value[0]) . " " . $value[1];
-                                    }else{
-                                        $parse = uniqid();
-                                        $this->query['parses'][$parse] = $value[2];
-                                        $stringFinal .= $this->generateField($value[0]) . " " . $value[1] . " :" . $parse;
-                                    }
-                                    if($countItens < count($query[1]) - 1){
-                                        $stringFinal .= " OR ";
-                                    }
-                                    $countItens++;
-                                }else{
-                                    //Estourar erro
-                                }
-                            }
-                        }else{
-                            $stringFinal .= $value;
-                            if($countItens < count($query[1]) - 1){
-                                $stringFinal .= " OR ";
-                            }
-                            $countItens++;
-                        }
-                    }
-                    $stringFinal .= ")";
-                    if(!empty($stringFinal)){
-                        $this->query['wheres'][] = $stringFinal;
-                    }
-                }
-
-                if($query[0] == 'AND' && is_array($query[1])){
-                    $stringFinal = "(";
-                    $countItens = 0;
-                    foreach($query[1] as $key => $value){
-                        if(count($value) == 1){
-                            $parse = uniqid();
-                            $this->query['parses'][$parse] = $value[array_keys($value)[0]];
-                            $stringFinal .= $this->generateField(array_keys($value)[0]) . " = :" . $parse;
-                            if($countItens < count($query[1]) - 1){
-                                $stringFinal .= " AND ";
-                            }
-                            $countItens++;
-                        }else if(count($value) == 3){
-                            if(in_array($value[1], $this->getAcceptComparativeOperators())){
-                                if($value[1] == "IS NULL" || $value[1] == "IS NOT NULL"){
-                                    $stringFinal .= $this->generateField($value[0]) . " " . $value[1];
-                                }else{
-                                    $parse = uniqid();
-                                    $this->query['parses'][$parse] = $value[2];
-                                    $stringFinal .= $this->generateField($value[0]) . " " . $value[1] . " :" . $parse;
-                                }
-                                if($countItens < count($query[1]) - 1){
-                                    $stringFinal .= " AND ";
-                                }
-                                $countItens++;
-                            }else{
-                                //Estourar erro
-                            }
-                        }
-                    }
-                    $stringFinal .= ")";
-                    if(!empty($stringFinal)){
-                        $this->query['wheres'][] = $stringFinal;
-                    }
-                }
-
-                if(in_array($query[1], ['IS NULL', 'IS NOT NULL'])){
-                    $this->query['wheres'][] = $this->generateField($query[0]) . " " . $query[1];
-                }
-            }
-
-            if(count($query) === 3){
-                if(in_array($query[1], $this->getAcceptComparativeOperators())){
-                    if(strtoupper($query[1]) == "IS NULL" || strtoupper($query[1]) == "IS NOT NULL"){
-                        $this->query['wheres'][] = $this->generateField($query[0]) . " " . $query[1];
-                    }else{  
-                        $this->query['parses'][$parse] = $query[2];
-                        $this->query['wheres'][] = $this->generateField($query[0]) . " " . $query[1] . " :" . $parse;
-                    }
-                }else if(in_array(strtoupper($query[1]), ['IN', 'NOT IN']) && is_array($query[2])){
-                    $string = '';
-
-                    foreach($query[2] as $itemIn){
-                        $parse = uniqid();
-
-                        $string .= ':' . $parse . ',';
-                        $this->query['parses'][$parse] = $itemIn;
-                    }
-
-                    if(!empty($string)){
-                        $this->query['wheres'][] = $this->generateField($query[0]) . ' ' . $query[1] . ' (' . substr($string, 0, -1) . ')';
-                    }
-                }else{
-                    //Estourar erro
-                }
-            }
-        }
-
+    /**
+     * Processa e constrói uma única cláusula de condição (WHERE).
+     * Esta é uma função auxiliar para andWhere e orWhere para evitar duplicação de código.
+     */
+    private function buildConditionClause(string|array $query, ?array $parses = null): ?string{
         if(is_string($query)){
             if(!empty($parses)){
                 foreach($parses as $key => $item){
@@ -342,114 +200,68 @@ class ModelQuery{
                     $query = str_replace(':' . $key . ':', ':' . $parse, $query);
                     $this->query['parses'][$parse] = $item;
                 }
-                $this->query['wheres'][] = $query;
-            }else{
-                $this->query['wheres'][] = $query;
             }
+            return $this->handleExtraQuery($query);
         }
 
+        if(is_array($query)){
+            switch(count($query)){
+                case 1: // Formato: ['coluna' => 'valor']
+                    $key = array_keys($query)[0];
+                    $parse = uniqid();
+                    $this->query['parses'][$parse] = $query[$key];
+                    return $this->generateField($key) . " = :" . $parse;
+
+                case 2: // Formato: ['coluna', 'OPERADOR'] ou ['OR'/'AND', [...]]
+                    if(in_array(strtoupper($query[1]), ['IS NULL', 'IS NOT NULL'], true)){
+                        return $this->generateField($query[0]) . " " . $query[1];
+                    }
+                    if(in_array(strtoupper($query[0]), ['OR', 'AND']) && is_array($query[1])){
+                        $conditions = array_filter(array_map(fn($c) => $this->buildConditionClause($c), $query[1]));
+                        if(empty($conditions)) return null;
+                        return "(" . implode(" " . strtoupper($query[0]) . " ", $conditions) . ")";
+                    }
+                    break;
+
+                case 3: // Formato: ['coluna', 'OPERADOR', 'valor'] ou ['coluna', 'IN', [...]]
+                    $operator = strtoupper($query[1]);
+                    if(in_array($operator, $this->getAcceptComparativeOperators(), true)){
+                        $parse = uniqid();
+                        $this->query['parses'][$parse] = $query[2];
+                        return $this->generateField($query[0]) . " " . $operator . " :" . $parse;
+                    }
+                    if(in_array($operator, ['IN', 'NOT IN']) && is_array($query[2])){
+                        if(empty($query[2])){
+                            return $operator === 'IN' ? '0=1' : '1=1'; // Evita erro de sintaxe com IN ()
+                        }
+                        $placeholders = [];
+                        foreach($query[2] as $itemIn){
+                            $parse = uniqid();
+                            $placeholders[] = ':' . $parse;
+                            $this->query['parses'][$parse] = $itemIn;
+                        }
+                        return $this->generateField($query[0]) . ' ' . $operator . ' (' . implode(',', $placeholders) . ')';
+                    }
+                    break;
+            }
+        }
+        
+        trigger_error("Formato de condição WHERE inválido: " . json_encode($query), E_USER_WARNING);
+        return null;
+    }
+
+    public function andWhere(string|array $query, array|null $parses = null) : ModelQuery{
+        $condition = $this->buildConditionClause($query, $parses);
+        if($condition !== null){
+            $this->query['wheres'][] = $condition;
+        }
         return $this;
     }
 
     public function orWhere(string|array $query, array|null $parses = null) : ModelQuery{
-        $parse = uniqid();
-        if(is_array($query)){
-            if(count($query) == 1){
-                $this->query['parses'][$parse] = $query[array_keys($query)[0]];
-                $this->query['orWheres'][] = $this->generateField(array_keys($query)[0]) . " = :" . $parse;
-            }else if(count($query) == 3){
-                if(in_array($query[1], $this->getAcceptComparativeOperators())){
-                    if($query[1] == "IS NULL" || $query[1] == "IS NOT NULL"){
-                        $this->query['orWheres'][] = $this->generateField($query[0]) . " " . $query[1];
-                    }else{
-                        $this->query['parses'][$parse] = $query[2];
-                        $this->query['orWheres'][] = $this->generateField($query[0]) . " " . $query[1] . " :" . $parse;
-                    }
-                }else{
-                    //Estourar erro
-                }
-            }else if(count($query) == 2){
-                if($query[0] == "OR" && is_array($query[1])){
-                    $stringFinal = "(";
-                    $countItens = 0;
-                    foreach($query[1] as $key => $value){
-                        if(count($value) == 1){
-                            $parse = uniqid();
-                            $this->query['parses'][$parse] = $value[array_keys($value)[0]];
-                            $stringFinal .= $this->generateField(array_keys($value)[0]) . " = :" . $parse;
-                            if($countItens < count($query[1]) - 1){
-                                $stringFinal .= " OR ";
-                            }
-                            $countItens++;
-                        }else if(count($value) == 3){
-                            if(in_array($value[1], $this->getAcceptComparativeOperators())){
-                                if($value[1] == "IS NULL" || $value[1] == "IS NOT NULL"){
-                                    $stringFinal .= $this->generateField($value[0]) . " " . $value[1];
-                                }else{
-                                    $parse = uniqid();
-                                    $this->query['parses'][$parse] = $value[2];
-                                    $stringFinal .= $this->generateField($value[0]) . " " . $value[1] . " :" . $parse;
-                                }
-                                if($countItens < count($query[1]) - 1){
-                                    $stringFinal .= " OR ";
-                                }
-                                $countItens++;
-                            }else{
-                                //Estourar erro
-                            }
-                        }
-                    }
-                    $stringFinal .= ")";
-                    if(!empty($stringFinal)){
-                        $this->query['orWheres'][] = $stringFinal;
-                    }
-                }else if($query[0] == 'AND' && is_array($query[1])){
-                    $stringFinal = "(";
-                    $countItens = 0;
-                    foreach($query[1] as $key => $value){
-                        if(count($value) == 1){
-                            $parse = uniqid();
-                            $this->query['parses'][$parse] = $value[array_keys($value)[0]];
-                            $stringFinal .= $this->generateField(array_keys($value)[0]) . " = :" . $parse;
-                            if($countItens < count($query[1]) - 1){
-                                $stringFinal .= " AND ";
-                            }
-                            $countItens++;
-                        }else if(count($value) == 3){
-                            if(in_array($value[1], $this->getAcceptComparativeOperators())){
-                                if($value[1] == "IS NULL" || $value[1] == "IS NOT NULL"){
-                                    $stringFinal .= $this->generateField($value[0]) . " " . $value[1];
-                                }else{
-                                    $parse = uniqid();
-                                    $this->query['parses'][$parse] = $value[2];
-                                    $stringFinal .= $this->generateField($value[0]) . " " . $value[1] . " :" . $parse;
-                                }
-                                if($countItens < count($query[1]) - 1){
-                                    $stringFinal .= " AND ";
-                                }
-                                $countItens++;
-                            }else{
-                                //Estourar erro
-                            }
-                        }
-                    }
-                    $stringFinal .= ")";
-                    if(!empty($stringFinal)){
-                        $this->query['orWheres'][] = $stringFinal;
-                    } 
-                }
-            }
-        }else if(is_string($query)){
-            if(!empty($parses)){
-                foreach($parses as $key => $item){
-                    $parse = uniqid();
-                    $query = str_replace(':' . $key . ':', ':' . $parse, $query);
-                    $this->query['parses'][$parse] = $item;
-                }
-                $this->query['orWheres'][] = $query;
-            }else{
-                $this->query['orWheres'][] = $query;
-            }
+        $condition = $this->buildConditionClause($query, $parses);
+        if($condition !== null){
+            $this->query['orWheres'][] = $condition;
         }
         return $this;
     }
@@ -554,10 +366,10 @@ class ModelQuery{
 
         $Read = new \Psf\Database\Read();
         $Read->exe(
-            Model::getTable($this->obj::class),
+            MetadataCache::getTable($this->obj::class),
             $this->writeQuery(),
             $this->getParses(),
-            Model::getDatabase($this->obj::class),
+            MetadataCache::getDatabase($this->obj::class),
             true
         );
         return $this->queryResult($Read);
@@ -565,7 +377,7 @@ class ModelQuery{
 
     private function writeQuery() : string{
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
-        $primaryKeys = Model::getPrimaryKey($this->obj::class);
+        $primaryKeys = MetadataCache::getPrimaryKey($this->obj::class);
 
         $stringQuery = "SELECT ";
 
@@ -595,11 +407,11 @@ class ModelQuery{
             if((isset($this->query['innerJoins']) && !empty($this->query['innerJoins'])) || (isset($this->query['leftJoins']) && !empty($this->query['leftJoins']))){
 
                 if($driver == DBDriver::MySQL){
-                    $fieldsQuery = '`' . Model::getTable($this->obj::class) . '`.*';
+                    $fieldsQuery = '`' . MetadataCache::getTable($this->obj::class) . '`.*';
                 }
 
                 if($driver == DBDriver::SQLServer){
-                    $fieldsQuery = '[' . Model::getTable($this->obj::class) . '].*';
+                    $fieldsQuery = '[' . MetadataCache::getTable($this->obj::class) . '].*';
                 }
             }else{
                 $fieldsQuery = '*';
@@ -926,28 +738,28 @@ class ModelQuery{
 
     public function getAllFields($class){
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
-        $columns = Model::getColumnByProp($class);
+        $columns = MetadataCache::getColumnMap($class);
 
         if(!empty($columns) && is_array($columns)){
             if($driver == DBDriver::MySQL){
                 return implode(',', array_map(function($item){
-                    return '`' . Model::getTable($this->obj::class) . '`.`' . $item . '`';
+                    return '`' . MetadataCache::getTable($this->obj::class) . '`.`' . $item . '`';
                 }, $columns));
             }
 
             if($driver == DBDriver::SQLServer){
                 return implode(',', array_map(function($item){
-                    return '[' . Model::getTable($this->obj::class) . '].[' . $item . ']';
+                    return '[' . MetadataCache::getTable($this->obj::class) . '].[' . $item . ']';
                 }, $columns));
             }
         }
 
-        return '`' . Model::getTable($this->obj::class) . '`.*';
+        return '`' . MetadataCache::getTable($this->obj::class) . '`.*';
     }
 
     public function leftJoinAndSelect(array|string $table, string $attr, string $query, array $fields = []){
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
-        $columns = Model::getColumnByProp((is_array($table) ? $table[0] : $table), $fields);
+        $columns = MetadataCache::getColumnMap((is_array($table) ? $table[0] : $table));
 
         if(!empty($columns) && is_array($columns)){
             if($driver == DBDriver::MySQL){
@@ -959,7 +771,7 @@ class ModelQuery{
 
             if($driver == DBDriver::SQLServer){
                 $fieldsToAdd = implode(',', array_map(function($item){
-                    return '[' . Model::getTable($this->obj::class) . '].[' . $item . ']';
+                    return '[' . MetadataCache::getTable($this->obj::class) . '].[' . $item . ']';
                 }, $columns));
             }
         }

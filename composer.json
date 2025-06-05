@@ -1,33 +1,29 @@
 {
     "name": "psf/framework",
-    "description": "Framework para o desenvolvimento de webapps",
+    "description": "Framework PHP para desenvolvimento de APIs",
     "type": "library",
-    "autoload": {
-        "files": [
-            "settings.php"
-        ],
-        "psr-4": {
-            "Psf\\Database\\": "src/database/",
-            "Psf\\Model\\": "src/model/",
-            "Psf\\Api\\": "src/api/",
-            "Psf\\Helper\\": "src/helpers/",
-            "Psf\\Http\\": "src/http/",
-            "Psf\\Utils\\": "src/utils/",
-            "Psf\\Enumerators\\": "src/enum/"
-        }
-    },
+    "license": "MIT",
     "authors": [
         {
             "name": "Theodoro Paim",
             "email": "theodoro@porglin.com"
         }
     ],
+    "minimum-stability": "dev",
     "require": {
-        "php": ">8.0",
-        "phpmailer/phpmailer": "^6.1",
         "jenssegers/agent": "^2.6",
         "aws/aws-sdk-php": "^3.270",
-        "spatie/ignition": "^1.15"
+        "spatie/ignition": "^1.11"
     },
-    "minimum-stability": "dev"
+    "autoload": {
+        "psr-4": {
+            "Psf\\": "src/"
+        }
+    },
+    "bin": [
+        "bin/phinx"
+    ],
+    "require-dev": {
+        "robmorgan/phinx": "0.x-dev"
+    }
 }

@@ -1,0 +1,51 @@
+<div class="row">
+    <div class="col itemFinal">
+        <div class="row">
+            <div class="col-auto nameField">
+                <?= htmlspecialchars($field['name']) ?>
+            </div>
+            <div class="col-auto typeField">
+                <?= htmlspecialchars($field['type']) ?>
+            </div>
+
+            <?php if (isset($field['required']) && $field['required'] === TRUE): ?>
+                <div class="col-auto requiredField">OBRIGATÓRIO</div>
+            <?php endif; ?>
+
+            <?php if (isset($field['description']) && !empty($field['description'])): ?>
+                <div class="col-auto ml-auto descriptionField">
+                    <?= $field['description'] ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if (isset($field['childs']) && !empty($field['childs'])): ?>
+            <div class="row">
+                <div class="col childList">
+                    <?php foreach ($field['childs'] as $child): ?>
+                        <div class="row">
+                            <div class="col childItem">
+                                <div class="row">
+                                    <div class="col-auto nameField">
+                                        <?= htmlspecialchars($child['name']) ?>
+                                    </div>
+                                    <div class="col-auto typeField">
+                                        <?= htmlspecialchars($child['type']) ?>
+                                    </div>
+                                    <?php if (isset($child['required']) && $child['required'] === TRUE): ?>
+                                        <div class="col-auto requiredField">OBRIGATÓRIO</div>
+                                    <?php endif; ?>
+                                    <?php if (isset($child['description']) && !empty($child['description'])): ?>
+                                        <div class="col-auto ml-auto descriptionField">
+                                            <?= $child['description'] ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+</div> 
