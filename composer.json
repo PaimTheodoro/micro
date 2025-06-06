@@ -20,7 +20,14 @@
             "settings.php"
         ],
         "psr-4": {
-            "Psf\\": "src/"
+            "Psf\\": "src/",
+            "Psf\\Database\\": "src/database/",
+            "Psf\\Model\\": "src/model/",
+            "Psf\\Api\\": "src/api/",
+            "Psf\\Helper\\": "src/helpers/",
+            "Psf\\Http\\": "src/http/",
+            "Psf\\Utils\\": "src/utils/",
+            "Psf\\Enumerators\\": "src/enum/"
         }
     },
     "bin": [
