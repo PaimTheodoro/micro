@@ -10,6 +10,13 @@ class ModelQuery{
     private $query;
     private $configDb;
 
+    private array $allowedSqlFunctions = [
+        'SUM', 'COUNT', 'AVG', 'MIN', 'MAX',
+        'CONCAT', 'LEFT', 'RIGHT', 'UPPER', 'LOWER', 'TRIM', 'LENGTH',
+        'DATE', 'YEAR', 'MONTH', 'DAY', 'NOW', 'CURDATE', 'CURTIME',
+        'IF', 'CASE', 'COALESCE',
+    ];
+
     public function __construct($class){
         $this->obj = new $class;
 
@@ -80,11 +87,12 @@ class ModelQuery{
      * @return string O campo SQL gerado.
      */
     private function generateField($field){
-        // Mantém a lógica para ignorar funções SQL e subqueries
         if(is_string($field)){
             $upperField = strtoupper($field);
-            if(str_starts_with($upperField, 'SUM(') || str_starts_with($upperField, 'COUNT(') || str_starts_with($upperField, 'MAX(') || str_starts_with($upperField, 'LEFT(')){
-                return $field;
+            foreach ($this->allowedSqlFunctions as $function) {
+                if (str_starts_with($upperField, $function . '(')) {
+                    return $field; // Retorna a função SQL diretamente
+                }
             }
         }
         if(is_array($field) && isset($field[0]) && $field[0] === 'subquery'){
@@ -94,7 +102,6 @@ class ModelQuery{
             return $field->Field;
         }
 
-        // 1. Normaliza o input (string, array) para partes [tabela, coluna, alias]
         $tableOrClass = null;
         $columnOrProp = null;
         $alias = null;
@@ -112,28 +119,31 @@ class ModelQuery{
             }
         } elseif (is_array($field)){
             [$tableOrClass, $columnOrProp] = $field;
-             $alias = $field[2] ?? null;
+            $alias = $field[2] ?? null;
         } else {
-             return (string) $field; // Fallback para tipos inesperados
+            return (string) $field; 
         }
 
-        // 2. Resolve classe para nome de tabela e propriedade para nome de coluna
         if($tableOrClass && class_exists($tableOrClass)){
             $table = MetadataCache::getTable($tableOrClass);
-            $column = MetadataCache::getColumnByProp($tableOrClass, $columnOrProp) ?? $columnOrProp;
+            // Always try to get the column name from the property using MetadataCache
+            $column = MetadataCache::getColumnByProp($tableOrClass, $columnOrProp);
+
+            if($column === false) {
+                // If no mapping found, fall back to the original property name
+                $column = $columnOrProp;
+            }
         } else {
             $table = $tableOrClass;
             $column = $columnOrProp;
         }
 
-        // Se nenhuma tabela foi definida, usa a tabela do modelo atual
         if($column === '*'){
             $table = $table ?? MetadataCache::getTable($this->obj::class);
         } else if(empty($table)){
             $table = MetadataCache::getTable($this->obj::class);
         }
         
-        // 3. Monta a string final com a citação correta
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
         
         $quote = function(string $identifier) use ($driver): string {

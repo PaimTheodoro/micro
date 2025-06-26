@@ -17,30 +17,44 @@
     
     $autoloader = require $dir . $autoloaderPath;
 
+    // Define a constante ROOT para o projeto
+    if (!defined('ROOT')) {
+        define('ROOT', $dir);
+    }
+
     // Agora que temos o autoloader, a raiz do projeto consumidor é $dir.
     // Procuramos por um arquivo de inicialização do framework.
     // O projeto que usa o framework deve fornecer um desses arquivos na sua raiz.
-    $bootstrapFiles = ['bootstrap/app.php', 'config/bootstrap.php', 'bootstrap.php', 'settings.php'];
+    $bootstrapFiles = ['bootstrap/app.php', 'config/bootstrap.php', 'bootstrap.php', 'config.php'];
     $bootstrapLoaded = false;
+    $config = null;
+    
     foreach ($bootstrapFiles as $file) {
         if (file_exists($dir . '/' . $file)) {
-            require $dir . '/' . $file;
+            $config = $dir . '/' . $file;
             $bootstrapLoaded = true;
             break;
         }
     }
 
     if (!$bootstrapLoaded) {
-        echo "Erro: Não foi possível encontrar um arquivo de inicialização (ex: bootstrap.php, settings.php).\n";
+        echo "Erro: Não foi possível encontrar um arquivo de inicialização (ex: bootstrap.php, config.php).\n";
         echo "O projeto que utiliza este framework deve fornecer um arquivo de inicialização para carregar as configurações.\n";
         exit(1);
     }
-    
+
+    // Inicializa o framework PSF com as configurações carregadas
+    if (class_exists('PSF')) {
+        PSF::init(['config' => $config]);
+    } else {
+        echo "Erro: Classe PSF não encontrada. Certifique-se de que o framework está instalado corretamente.\n";
+        exit(1);
+    }
+
     // Define a constante PHINX_CONFIG_FILE para que o Phinx use nosso arquivo de configuração.
     // O caminho precisa ser absoluto.
-    $frameworkDir = dirname(__DIR__); // Raiz do nosso pacote de framework
-    define('PHINX_CONFIG_FILE', $frameworkDir . '/phinx.php');
+    define('PHINX_CONFIG_FILE', __DIR__ . '/../phinx.php');
 
     // Carrega e executa a aplicação CLI do Phinx
-    require_once $frameworkDir . '/vendor/robmorgan/phinx/bin/phinx';
+    require_once ROOT . '/vendor/robmorgan/phinx/bin/phinx';
 })(); 

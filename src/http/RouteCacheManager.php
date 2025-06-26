@@ -18,11 +18,11 @@ class RouteCacheManager{
         $this->key = 'psf_routes_v1';
 
         // Busca o diretório dos controllers. Garante que seja um array.
-        $controllersPath = Psf::config('settings', 'controllers');
+        $controllersPath = Psf->config('settings', 'controllers');
         $this->scanDirs = $controllersPath ? (array)$controllersPath : [];
 
         // Busca o ambiente da aplicação. O padrão é 'dev'.
-        $this->appEnv = Psf::config('environment') ?? 'dev';
+        $this->appEnv = Psf->config('environment') ?? 'dev';
     }
 
     public function getRoutes(): array{

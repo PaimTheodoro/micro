@@ -16,6 +16,24 @@ class Model{
 		}
 	}
 
+	/**
+	 * Verifica se um atributo é do tipo especificado
+	 */
+	private static function isAttributeType($attribute, string $type): bool {
+		$className = $attribute->getName();
+		// Usa substr_compare para compatibilidade com PHP < 8.0
+		return substr_compare($className, $type, -strlen($type)) === 0 || $className === $type;
+	}
+
+	/**
+	 * Encontra um atributo do tipo especificado
+	 */
+	private static function findAttributeByType($attributes, string $type) {
+		return array_values(array_filter($attributes, function($attr) use ($type) {
+			return self::isAttributeType($attr, $type);
+		}));
+	}
+
 	public function getPrimarysKeys(){
 		return array_values(array_map(function($item){
 			return $item->Field;
@@ -33,9 +51,7 @@ class Model{
 		foreach($refClass->getProperties() as $property){
 			$attributes = $property->getAttributes();
 
-			$primarysKey = array_values(array_filter($attributes, function($attr) use ($property){
-				return $attr->getName() === 'PrimaryKey';
-			}));
+			$primarysKey = Model::findAttributeByType($attributes, 'PrimaryKey');
 
 			if(!empty($primarysKey)){
 				foreach($primarysKey as $column){
@@ -84,57 +100,68 @@ class Model{
 		foreach($refClass->getProperties() as $property){
 			$attributes = $property->getAttributes();
 
-			$column = array_values(array_filter($attributes, function($attr) use ($property){
-				return $attr->getName() === 'Column';
-			}));
+			$column = Model::findAttributeByType($attributes, 'Column');
 
 			if(!empty($column)){
-				$column = $column[0]->getArguments()[0];
+				$args = $column[0]->getArguments();
+				$colName = null;
+				if (isset($args[0])) {
+					$colName = $args[0];
+				} elseif (isset($args['name'])) {
+					$colName = $args['name'];
+				}
+				$column = $colName;
 
 				if($removePrimarys){
-					$isPrimaryKey = array_values(array_filter($attributes, function($attr) use ($property){
-						return $attr->getName() === 'PrimaryKey';
-					}));
+					$isPrimaryKey = Model::findAttributeByType($attributes, 'PrimaryKey');
 
 					if(!empty($isPrimaryKey)){
 						continue;
 					}
 				}
 
-				$typeValue = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'Type' && !empty($attr->getArguments()[0]);
-				}));
-
-				if(!empty($typeValue)){
-					$typeValue = $typeValue[0]->getArguments()[0];
+				$typeValue = Model::findAttributeByType($attributes, 'Type');
+				if(!empty($typeValue) && isset($typeValue[0])){
+					$args = $typeValue[0]->getArguments();
+					if (isset($args[0])) {
+						$typeValue = $args[0];
+					} elseif (isset($args['type'])) {
+						$typeValue = $args['type'];
+					} else {
+						$typeValue = NULL;
+					}
 				}else{
 					$typeValue = NULL;
 				}
 
-				$standardValue = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'Standard' && !empty($attr->getArguments()[0]);
-				}));
-
-				if(!empty($standardValue) && empty($object->{$property->getName()})){
-					if(property_exists($standardValue[0]->getArguments()[0], 'value')){
-						$object->{$property->getName()} = $standardValue[0]->getArguments()[0]->value;
-					}else{
-						if(strtoupper($standardValue[0]->getArguments()[0]) === 'NOW()'){
-							$object->{$property->getName()} = date('Y-m-d H:i:s');
-						}else if(strtoupper($standardValue[0]->getArguments()[0]) === 'UUIDV4'){
-							$object->{$property->getName()} = UUID::generate('4');
-						}else{
-							$object->{$property->getName()} = $standardValue[0]->getArguments()[0];
-						}
+				$standardValue = Model::findAttributeByType($attributes, 'Standard');
+				if(!empty($standardValue) && isset($standardValue[0]) && empty($object->{$property->getName()})){
+					$args = $standardValue[0]->getArguments();
+					$stdValue = null;
+					if (isset($args[0])) {
+						$stdValue = $args[0];
+					} elseif (isset($args['value'])) {
+						$stdValue = $args['value'];
 					}
+					
+					if($stdValue !== null){
+						if(property_exists($stdValue, 'value')){
+							$object->{$property->getName()} = $stdValue->value;
+						}else{
+							if(strtoupper($stdValue) === 'NOW()'){
+								$object->{$property->getName()} = date('Y-m-d H:i:s');
+							}else if(strtoupper($stdValue) === 'UUIDV4'){
+								$object->{$property->getName()} = UUID::generate('4');
+							}else{
+								$object->{$property->getName()} = $stdValue;
+							}
+						}
 
-					$fields[$column] = $object->{$property->getName()};
+						$fields[$column] = $object->{$property->getName()};
+					}
 				}
 
-				$columnCreatedDate = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'ColumnCreatedDate';
-				}));
-
+				$columnCreatedDate = Model::findAttributeByType($attributes, 'ColumnCreatedDate');
 				if(!empty($columnCreatedDate) && empty($object->{$property->getName()})){
 					if($typeValue == 'timestamp'){
 						$newValue = time();
@@ -146,10 +173,7 @@ class Model{
 					$fields[$column] = $newValue;
 				}
 
-				$columnUpdatedDate = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'ColumnUpdatedDate';
-				}));
-
+				$columnUpdatedDate = Model::findAttributeByType($attributes, 'ColumnUpdatedDate');
 				if(!empty($columnUpdatedDate) && empty($object->{$property->getName()})){
 					if($typeValue == 'timestamp'){
 						$newValue = time();
@@ -161,12 +185,16 @@ class Model{
 					$fields[$column] = $newValue;
 				}
 
-				$required = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'Nullable';
-				}));
-
-				if(!empty($required)){
-					$required = $required[0]->getArguments()[0];
+				$required = Model::findAttributeByType($attributes, 'Nullable');
+				if(!empty($required) && isset($required[0])){
+					$args = $required[0]->getArguments();
+					if (isset($args[0])) {
+						$required = $args[0];
+					} elseif (isset($args['nullable'])) {
+						$required = $args['nullable'];
+					} else {
+						$required = true; // padrão
+					}
 				}
 
 				if($required === FALSE && empty($object->{$property->getName()})){
@@ -235,16 +263,19 @@ class Model{
 		foreach($refClass->getProperties() as $property){
 			$attributes = $property->getAttributes();
 
-			$column = array_values(array_filter($attributes, function($attr) use ($property){
-				return $attr->getName() === 'Column';
-			}));
+			$column = Model::findAttributeByType($attributes, 'Column');
 
-			if(!empty($column)){
-				$column = $column[0]->getArguments()[0];
+			if(!empty($column) && isset($column[0])){
+				$args = $column[0]->getArguments();
+				$colName = null;
+				if (isset($args[0])) {
+					$colName = $args[0];
+				} elseif (isset($args['name'])) {
+					$colName = $args['name'];
+				}
+				$column = $colName;
 
-				$columnDeleted = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'ColumnDeletedDate';
-				}));
+				$columnDeleted = Model::findAttributeByType($attributes, 'ColumnDeletedDate');
 
 				if(!empty($columnDeleted)){
 					$softDelete = $column;
@@ -328,19 +359,31 @@ class Model{
 	}
 
 	public static function getTable($class){
-		$table = array_values(array_filter((new \ReflectionClass($class))->getAttributes(), function($attr){
-			return $attr->getName() === 'Table';
-		}));
+		$table = Model::findAttributeByType((new \ReflectionClass($class))->getAttributes(), 'Table');
 
-		return !empty($table) ? $table[0]->getArguments()[0] : FALSE; 
+		if (!empty($table) && isset($table[0])) {
+			$args = $table[0]->getArguments();
+			if (isset($args[0])) {
+				return $args[0];
+			} elseif (isset($args['name'])) {
+				return $args['name'];
+			}
+		}
+		return FALSE; 
 	}
 
 	public static function getDatabase($class){
-		$database = array_values(array_filter((new \ReflectionClass($class))->getAttributes(), function($attr){
-			return $attr->getName() === 'Database';
-		}));
+		$database = Model::findAttributeByType((new \ReflectionClass($class))->getAttributes(), 'Database');
 
-		return !empty($database) ? $database[0]->getArguments()[0] : 'default'; 
+		if (!empty($database) && isset($database[0])) {
+			$args = $database[0]->getArguments();
+			if (isset($args[0])) {
+				return $args[0];
+			} elseif (isset($args['name'])) {
+				return $args['name'];
+			}
+		}
+		return 'default'; 
 	}
 
 	public static function serializeData($class, array $data, bool $asArray = FALSE, null|array $joins = []) : object|array|null{
@@ -351,12 +394,17 @@ class Model{
 			foreach($refClass->getProperties() as $property){
 				$attributes = $property->getAttributes();
 
-				$column = array_values(array_filter($attributes, function($attr) use ($property){
-					return $attr->getName() === 'Column';
-				}));
+				$column = Model::findAttributeByType($attributes, 'Column');
 
 				if(!empty($column)){
-					$response->{$property->getName()} = !empty($data[$column[0]->getArguments()[0]]) || (isset($data[$column[0]->getArguments()[0]]) && $data[$column[0]->getArguments()[0]] == 0) ? $data[$column[0]->getArguments()[0]] : NULL;
+					$args = $column[0]->getArguments();
+					$columnName = null;
+					if (isset($args[0])) {
+						$columnName = $args[0];
+					} elseif (isset($args['name'])) {
+						$columnName = $args['name'];
+					}
+					$response->{$property->getName()} = !empty($data[$columnName]) || (isset($data[$columnName]) && $data[$columnName] == 0) ? $data[$columnName] : NULL;
 				}else{
 					if(!empty($joins)){
 						$findJoinForProperty = array_filter($joins, function($item) use ($property){
@@ -398,19 +446,21 @@ class Model{
 			$response = [];
 			
 			foreach(array_keys($data) as $key){
-				// var_dump($data);
-
 				$findColumnExist = array_values(array_filter($refClass->getProperties(), function($prop) use ($key){
 					$attributes = $prop->getAttributes();
 
-					$column = array_values(array_filter($attributes, function($attr) use ($prop, $key){
-						return $attr->getName() === 'Column' && $attr->getArguments()[0] == $key;
-					}));
-
-					if(!empty($column)){
-						$column = $column[0]->getArguments()[0];
-
-						return $column;
+					$column = Model::findAttributeByType($attributes, 'Column');
+					if(!empty($column) && isset($column[0])){
+						$args = $column[0]->getArguments();
+						$colName = null;
+						if (isset($args[0])) {
+							$colName = $args[0];
+						} elseif (isset($args['name'])) {
+							$colName = $args['name'];
+						}
+						if($colName == $key){
+							return $colName;
+						}
 					}
 				}));
 
@@ -434,14 +484,12 @@ class Model{
 								$classRelation = is_array($findJoinForProperty['table']) ? $findJoinForProperty['table'][0] : $findJoinForProperty['table'];
 
 								$objectField = explode('_', $key);
-								// var_dump($objectField);
 								unset($objectField[0]); 
 
 								$getColumnRelation = Model::getPropByColumn($classRelation, implode('_', $objectField));
 
 								if(!empty($getColumnRelation)){
 									$response[$findJoinForProperty['andSelect']][$getColumnRelation] = $data[$key];
-								// 	$response->{$findJoinForProperty['andSelect']}->{$getColumnRelation} = $value;
 									continue;
 								}	
 							}else if(str_starts_with($key, $findJoinForProperty['andSelect'] . '#')){
@@ -469,8 +517,6 @@ class Model{
 									$getColumnRelation = Model::getPropByColumn($classRelationTwo, implode('_', $objectFieldAttr));
 									
 									if(!empty($getColumnRelation)){
-										// var_dump($getColumnRelation);
-										// var_dump($objectFieldAttr);
 										$response[$findJoinForProperty['andSelect']][$fieldTwo][$getColumnRelation] = $data[$key];
 										continue;
 									}
@@ -489,9 +535,6 @@ class Model{
 	}
 
 	public static function getPropByColumn($class, $column){
-		// var_dump($class);
-		// var_dump($column);
-
 		$refClass = new \ReflectionClass($class);
 
 		if(!empty($refClass->getProperties())){
@@ -499,12 +542,18 @@ class Model{
 				$getAttrs = $prop->getAttributes();
 
 				if(!empty($getAttrs)){
-					$findColumn = array_values(array_filter($getAttrs, function($attr){
-		                return $attr->getName() === 'Column';
-		            }));
+					$findColumn = Model::findAttributeByType($getAttrs, 'Column');
 
-		            if(!empty($findColumn)){
-		            	if($findColumn[0]->getArguments()[0] == $column){
+		            if(!empty($findColumn) && isset($findColumn[0])){
+		            	$args = $findColumn[0]->getArguments();
+		            	$colName = null;
+		            	if (isset($args[0])) {
+		            		$colName = $args[0];
+		            	} elseif (isset($args['name'])) {
+		            		$colName = $args['name'];
+		            	}
+		            	
+		            	if($colName == $column){
 		            		return $prop->getName();
 		            		break;
 		            	}
@@ -514,27 +563,6 @@ class Model{
 		}
 
 		return FALSE;
-		
-        // $findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($column){
-        // 	var_dump($item);
-
-        //     return $column === $item->getName();
-        // }));
-
-        // if(!empty($findPropertie)){
-        //     $attributes = $findPropertie[0]->getAttributes();
-
-        //     $column = array_values(array_filter($attributes, function($attr){
-        //         return $attr->getName() === 'Column';
-        //     }));
-
-        //     if(!empty($column)){
-        //     	echo "sim";
-        //         return $column[0]->getArguments()[0];
-        //     }
-        // }
-
-		// return FALSE;
 	}
 
 	public static function getPrimaryKey($class, $type = 'column'){
@@ -542,9 +570,7 @@ class Model{
 		foreach($refClass->getProperties() as $property){
 			$attributes = $property->getAttributes();
 
-			$primarysKey = array_values(array_filter($attributes, function($attr) use ($property){
-				return $attr->getName() === 'PrimaryKey';
-			}));
+			$primarysKey = Model::findAttributeByType($attributes, 'PrimaryKey');
 
 			if(!empty($primarysKey)){
 				foreach($primarysKey as $column){
@@ -578,12 +604,19 @@ class Model{
         	foreach($findPropertie as $propItem){
         		$attributes = $propItem->getAttributes();
 
-	            $column = array_values(array_filter($attributes, function($attr){
-	                return $attr->getName() === 'Column';
-	            }));
+	            $column = Model::findAttributeByType($attributes, 'Column');
 
-	            if(!empty($column)){
-	                $columns[] = $column[0]->getArguments()[0];
+	            if(!empty($column) && isset($column[0])){
+	            	$args = $column[0]->getArguments();
+	            	$colName = null;
+	            	if (isset($args[0])) {
+	            		$colName = $args[0];
+	            	} elseif (isset($args['name'])) {
+	            		$colName = $args['name'];
+	            	}
+	            	if ($colName !== null) {
+	            		$columns[] = $colName;
+	            	}
 	            }
         	}
 
@@ -603,16 +636,23 @@ class Model{
 
 			$attributes = $prop->getAttributes();
 
-			$enum = array_values(array_filter($attributes, function($attr) use ($prop, $property){
-				return $attr->getName() === 'Enum';
-			}));
+			$enum = Model::findAttributeByType($attributes, 'Enum');
 
 			if(empty($enum)){
 				return FALSE;
-
 			}else{
-				$enum = $enum[0]->getArguments()[0];
-
+				if (isset($enum[0])) {
+					$args = $enum[0]->getArguments();
+					if (isset($args[0])) {
+						$enum = $args[0];
+					} elseif (isset($args['enumClass'])) {
+						$enum = $args['enumClass'];
+					} else {
+						$enum = null;
+					}
+				} else {
+					$enum = null;
+				}
 				return $enum;
 			}
 		}, $refClass->getProperties()), fn($if) => !empty($if)));
