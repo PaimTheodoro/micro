@@ -37,7 +37,7 @@ class Create extends Connect{
 
             $places = ':' . implode(', :', array_keys($obj->data));
 
-            $obj->create = "INSERT INTO {$obj->table} ({$fields}) VALUES ({$places})";
+            $obj->create = "INSERT INTO `{$obj->table}` ({$fields}) VALUES ({$places})";
             $obj->create = $obj->connection->prepare($obj->create);
 
             try{

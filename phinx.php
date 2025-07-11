@@ -50,6 +50,8 @@ return [
     ],
     'commands' => [
         'Psf\\Database\\Command\\ModelAwareMigration',
+        'Psf\\Database\\Command\\ModelGenerator',
+        'Psf\\Database\\Command\\TableAnalyzer',
     ],
     'environments' => [
         'default_migration_table' => 'phinxlog',

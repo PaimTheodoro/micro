@@ -3,6 +3,7 @@
     "description": "Framework PHP para desenvolvimento de APIs",
     "type": "library",
     "license": "MIT",
+    "version": "0.0.1",
     "authors": [
         {
             "name": "Theodoro Paim",
@@ -11,8 +12,8 @@
     ],
     "minimum-stability": "dev",
     "require": {
+        "php": ">=8.0",
         "jenssegers/agent": "^2.6",
-        "aws/aws-sdk-php": "^3.270",
         "spatie/ignition": "^1.11"
     },
     "autoload": {

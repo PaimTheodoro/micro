@@ -4,7 +4,6 @@ namespace Psf\Http;
 
 use \Psf\Http\{StatusCode, Http, ApiDocsGenerator, RouteCacheManager};
 
-#[Attribute]
 class Router{
 	private array 	$routes 	= [];
 	private ?string $method 	= null;
@@ -14,7 +13,10 @@ class Router{
 	private ?array 	$fields 	= [];
 	public static 	$auth 		= [];
 	private static  $patterns  	= [
-		'UUID4' 	=> "/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i",
+		'uuid4' 	=> "/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i",
+		'int'       => "/^\\d+$/", // Apenas números inteiros positivos
+		'string'    => "/^[a-zA-Z0-9_]+$/", // Alfanumérico e underscore
+		'slug'      => "/^[a-z0-9-]+$/", // Slug de URL (letras minúsculas, números e hífen)
 	];
 
 	public function __construct(...$args){
@@ -114,10 +116,24 @@ class Router{
                 $urlPiece = $this->piecesArr[$i];
 
                 if(str_starts_with($routePiece, '{') && str_ends_with($routePiece, '}')){
-                    $expression = explode(":", substr($routePiece, 1, -1))[1] ?? null;
-                    if($expression && isset(self::$patterns[$expression]) && !preg_match(self::$patterns[$expression], $urlPiece)){
-                        $isMatch = false;
-                        break;
+                    $paramParts = explode(":", substr($routePiece, 1, -1), 2);
+                    $paramName = $paramParts[0];
+                    $expression = $paramParts[1] ?? null;
+                    if($expression){
+                        if(isset(self::$patterns[$expression])){
+                            $pattern = self::$patterns[$expression];
+                        } else {
+                            // Tenta usar como regex inline
+                            $pattern = $expression;
+                        }
+                        // Testa se a regex é válida
+                        set_error_handler(function() {}, E_WARNING);
+                        $isValidRegex = @preg_match($pattern, $urlPiece) !== false;
+                        restore_error_handler();
+                        if(!$isValidRegex || !preg_match($pattern, $urlPiece)){
+                            $isMatch = false;
+                            break;
+                        }
                     }
                 } else if ($routePiece !== $urlPiece){
                     $isMatch = false;

@@ -3,7 +3,7 @@
 namespace Psf\Model;
 
 use \Psf\Enumerators\{DBDriver};
-use Psf\Model\MetadataCache;
+use \Psf\Model\Attributes\{Column, ColumnDeletedDate};
 
 class ModelQuery{
     private $obj;
@@ -89,8 +89,9 @@ class ModelQuery{
     private function generateField($field){
         if(is_string($field)){
             $upperField = strtoupper($field);
+                
             foreach ($this->allowedSqlFunctions as $function) {
-                if (str_starts_with($upperField, $function . '(')) {
+                if (str_starts_with($upperField, '(') || str_starts_with($upperField, $function) || str_starts_with($upperField, $function . '(')) {
                     return $field; // Retorna a função SQL diretamente
                 }
             }
@@ -223,13 +224,13 @@ class ModelQuery{
                     return $this->generateField($key) . " = :" . $parse;
 
                 case 2: // Formato: ['coluna', 'OPERADOR'] ou ['OR'/'AND', [...]]
-                    if(in_array(strtoupper($query[1]), ['IS NULL', 'IS NOT NULL'], true)){
-                        return $this->generateField($query[0]) . " " . $query[1];
-                    }
                     if(in_array(strtoupper($query[0]), ['OR', 'AND']) && is_array($query[1])){
                         $conditions = array_filter(array_map(fn($c) => $this->buildConditionClause($c), $query[1]));
                         if(empty($conditions)) return null;
                         return "(" . implode(" " . strtoupper($query[0]) . " ", $conditions) . ")";
+                    }
+                    if(in_array(strtoupper($query[1]), ['IS NULL', 'IS NOT NULL'], true)){
+                        return $this->generateField($query[0]) . " " . $query[1];
                     }
                     break;
 
@@ -356,21 +357,32 @@ class ModelQuery{
         foreach($refClass->getProperties() as $property){
             $attributes = $property->getAttributes();
 
-            $column = array_values(array_filter($attributes, function($attr) use ($property){
-                return $attr->getName() === 'Column';
-            }));
+            $hasDeletedDate = false;
+            $columnName = null;
 
-            if(!empty($column)){
-                $column = $column[0]->getArguments()[0];
+            foreach ($attributes as $attr) {
+                $attrName = method_exists($attr, 'getName') ? $attr->getName() : (property_exists($attr, 'name') ? $attr->name : null);
 
-                $columnDeleted = array_values(array_filter($attributes, function($attr) use ($property){
-                    return $attr->getName() === 'ColumnDeletedDate';
-                }));
+                // var_dump($attrName);
 
-                if(!empty($columnDeleted)){
-                    $this->andWhere([$this->obj::class . '.' . $column, 'IS NULL']);
-                    break;
+                if ($attrName === ColumnDeletedDate::class || (is_object($attr) && $attr instanceof \Psf\Model\Attributes\ColumnDeletedDate)) {
+                    $hasDeletedDate = true;
                 }
+                
+                if ($attrName === Column::class || (is_object($attr) && $attr instanceof \Psf\Model\Attributes\Column)) {
+                    if (method_exists($attr, 'getArguments')) {
+                        $args = $attr->getArguments();
+                        $columnName = $args[0] ?? $args['name'] ?? null;
+                    } else {
+                        $columnName = $attr->name ?? null;
+                    }
+                }
+            }
+
+            if ($hasDeletedDate) {
+                $column = $columnName;
+                $this->andWhere([$this->obj::class . '.' . $column, 'IS NULL']);
+                break;
             }
         }
 
@@ -642,6 +654,10 @@ class ModelQuery{
         $this->query['asArray'] = true;
         $this->query['limit'] = $itensPerPage;
         $this->query['offset'] = $initIn;
+
+        if(empty($this->query['fields'])){
+            $this->query['fields'] = [Model::getTable($this->obj::class) . '.*'];
+        }
 
         array_unshift($this->query['fields'], 'COUNT(' . $this->generateField([$this->obj::class, Model::getPrimaryKey($this->obj::class)[0]]) . ') OVER () AS totalItensFromPagination');
 

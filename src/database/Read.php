@@ -38,7 +38,7 @@ class Read extends Connect{
         $this->read = $this->connection->prepare($this->select);
         $this->read->setFetchMode(\PDO::FETCH_ASSOC);
 
-        if(in_array($table, parent::$tables[$database]) || str_starts_with($table, 'v_') || str_starts_with($table, 'view_')){
+        if(in_array($table, parent::$tables[$database]) || $table === NULL || str_starts_with($table, 'v_') || str_starts_with($table, 'view_')){
             $this->execute();
             return $this;
         }else{
@@ -94,6 +94,12 @@ class Read extends Connect{
         }catch (\PDOException $e){
             $this->result = null;
             explodeException($e);
+        }
+    }
+
+    public function closeCursor(){
+        if($this->read instanceof \PDOStatement){
+            $this->read->closeCursor();
         }
     }
 }

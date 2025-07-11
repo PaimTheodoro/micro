@@ -279,7 +279,20 @@ class Model{
 
 				if(!empty($columnDeleted)){
 					$softDelete = $column;
-					$this->{$property->getName()} = date('Y-m-d H:i:s');
+					$typeValue = null;
+					$typeAttr = Model::findAttributeByType($attributes, 'Type');
+					if(!empty($typeAttr) && isset($typeAttr[0])){
+						$typeArgs = $typeAttr[0]->getArguments();
+						if(isset($typeArgs[0])){
+							$typeValue = $typeArgs[0];
+						}
+					}
+					if($typeValue == 'timestamp'){
+						$newValue = time();
+					}else{
+						$newValue = date('Y-m-d H:i:s');
+					}
+					$this->{$property->getName()} = $newValue;
 					break;
 				}
 			}

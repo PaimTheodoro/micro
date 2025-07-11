@@ -28,10 +28,12 @@
     $bootstrapFiles = ['bootstrap/app.php', 'config/bootstrap.php', 'bootstrap.php', 'config.php'];
     $bootstrapLoaded = false;
     $config = null;
+    $home = null;
     
     foreach ($bootstrapFiles as $file) {
         if (file_exists($dir . '/' . $file)) {
             $config = $dir . '/' . $file;
+            $home = $dir;
             $bootstrapLoaded = true;
             break;
         }
@@ -53,8 +55,9 @@
 
     // Define a constante PHINX_CONFIG_FILE para que o Phinx use nosso arquivo de configuração.
     // O caminho precisa ser absoluto.
-    define('PHINX_CONFIG_FILE', __DIR__ . '/../phinx.php');
+    $frameworkDir = dirname(__DIR__); // Raiz do nosso pacote de framework
+    define('PHINX_CONFIG_FILE', $frameworkDir . '/phinx.php');
 
-    // Carrega e executa a aplicação CLI do Phinx
-    require_once ROOT . '/vendor/robmorgan/phinx/bin/phinx';
+    // Carrega e executa a aplicação CLI do Phinx do projeto principal
+    require_once $home . '/vendor/robmorgan/phinx/bin/phinx';
 })(); 
