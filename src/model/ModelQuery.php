@@ -17,11 +17,12 @@ class ModelQuery{
         'IF', 'CASE', 'COALESCE',
     ];
 
-    public function __construct($class){
+    public function __construct($class, $startWith = NULL){
         $this->obj = new $class;
 
         $this->query = [
             'fields'        => NULL,
+            'startWith'     => $startWith,
             'wheres'        => NULL,
             'orWheres'      => NULL,
             'innerJoins'    => NULL,
@@ -401,7 +402,7 @@ class ModelQuery{
         $driver = !empty($this->configDb['driver']) ? $this->configDb['driver'] : DBDriver::MySQL;
         $primaryKeys = MetadataCache::getPrimaryKey($this->obj::class);
 
-        $stringQuery = "SELECT ";
+        $stringQuery = !empty($this->query['startWith']) ? $this->query['startWith'] . " " : "SELECT ";
 
         if($driver == DBDriver::SQLServer){
             if(!empty($this->query['limit']) && $this->query['offset'] === NULL){

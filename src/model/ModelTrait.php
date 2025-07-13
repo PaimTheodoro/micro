@@ -3,8 +3,8 @@
 namespace Psf\Model;
 
 trait ModelTrait{
-    public static function find() : ModelQuery {
-        return new ModelQuery(self::class);
+    public static function find($startWith = NULL) : ModelQuery {
+        return new ModelQuery(self::class, $startWith);
     }
 
     public static function findById(int $id) : ModelQuery {
