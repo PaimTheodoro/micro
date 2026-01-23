@@ -145,7 +145,9 @@ class Model{
 					}
 					
 					if($stdValue !== null){
-						if(property_exists($stdValue, 'value')){
+						if(is_numeric($stdValue)){
+							$object->{$property->getName()} = $stdValue;
+						}else if(property_exists($stdValue, 'value')){
 							$object->{$property->getName()} = $stdValue->value;
 						}else{
 							if(strtoupper($stdValue) === 'NOW()'){
@@ -163,7 +165,7 @@ class Model{
 
 				$columnCreatedDate = Model::findAttributeByType($attributes, 'ColumnCreatedDate');
 				if(!empty($columnCreatedDate) && empty($object->{$property->getName()})){
-					if($typeValue == 'timestamp'){
+					if(in_array($typeValue, ['timestamp', 'bigint'])){
 						$newValue = time();
 					}else{
 						$newValue = date('Y-m-d H:i:s');
@@ -175,7 +177,7 @@ class Model{
 
 				$columnUpdatedDate = Model::findAttributeByType($attributes, 'ColumnUpdatedDate');
 				if(!empty($columnUpdatedDate) && empty($object->{$property->getName()})){
-					if($typeValue == 'timestamp'){
+					if(in_array($typeValue, ['timestamp', 'bigint'])){
 						$newValue = time();
 					}else{
 						$newValue = date('Y-m-d H:i:s');
@@ -287,7 +289,7 @@ class Model{
 							$typeValue = $typeArgs[0];
 						}
 					}
-					if($typeValue == 'timestamp'){
+					if(in_array($typeValue, ['timestamp', 'bigint'])){
 						$newValue = time();
 					}else{
 						$newValue = date('Y-m-d H:i:s');

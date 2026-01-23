@@ -194,4 +194,21 @@ class Connect{
         }
     }
     
+    public static function Command($query){
+        $Read = new Read;
+        
+        $execute = $Read->exe(
+            table: NULL, 
+            string: $query,
+            free: TRUE
+        );
+
+        if(!$execute || $execute->getRowCount() == 0){
+            return false;
+        }
+
+        $Read->closeCursor();
+
+        return $execute->getResult();
+    }
 }

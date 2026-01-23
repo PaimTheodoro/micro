@@ -450,10 +450,10 @@ class ModelQuery{
             foreach($this->query['innerJoins'] as $itemJoin){
                 if(is_array($itemJoin['table'])){
                     $tableName = class_exists($itemJoin['table'][0]) ? (new $itemJoin['table'][0])->getTableName() : $itemJoin['table'][0];
-                    $stringQuery .= " INNER JOIN " . $tableName . " AS " .  $itemJoin['table'][1] . " ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
+                    $stringQuery .= " INNER JOIN `" . $tableName . "` AS " .  $itemJoin['table'][1] . " ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
                 }else{
                     $tableName = class_exists($itemJoin['table']) ? (new $itemJoin['table'])->getTableName() : $itemJoin['table'];
-                    $stringQuery .= " INNER JOIN " . $tableName . " ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
+                    $stringQuery .= " INNER JOIN `" . $tableName . "` ON " . $this->handleExtraQuery($itemJoin['query']) . " ";
                 }
             }
         }

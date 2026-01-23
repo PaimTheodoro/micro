@@ -5,7 +5,7 @@ namespace Psf\Helper;
 use \Psf\Http\Http;
 
 class IP{
-	protected static $url = "http://www.geoplugin.net/json.gp?ip=";
+	protected static $url = "https://ipwho.is/";
 
 	public static function getInfo(string|null $ip = null) : array{
 		$framework = true;
@@ -26,47 +26,51 @@ class IP{
 			$framework = false;
 		}
 
+		if($ip == '127.0.0.1'){
+			$ip = '8.8.8.8';
+		}
+
 		$request = Http::request("GET", self::$url . $ip, [], []);
 
 		if(isset($request['response'])){
 			$responseIp = $request['response'];
 
-			if(isset($responseIp['geoplugin_status'])){
-				if($responseIp['geoplugin_status'] == 200 || $responseIp['geoplugin_status'] == 206){
+			if(isset($responseIp['success'])){
+				if($responseIp['success'] == true){
 					return [
 						"framework" => $framework,
 						"ip" => [
 							"send" => $ip,
-							"apiFind" => $responseIp['geoplugin_request'],
-							"changed" => $ip != $responseIp['geoplugin_request'] ? true : false
+							"apiFind" => $responseIp['ip'],
+							"changed" => $ip != $responseIp['ip'] ? true : false
 						],
 						"geolocation" => [
-							"city" => $responseIp['geoplugin_city'],
+							"city" => $responseIp['city'] ?? NULL,
 							"region" => [
-								"identify" => $responseIp['geoplugin_region'],
-								"name" => $responseIp['geoplugin_regionName'],
-								"code" => $responseIp['geoplugin_regionCode']
+								"name" => $responseIp['region'] ?? NULL,
+								"code" => $responseIp['region_code'] ?? NULL
 							],
 							"country" => [
-								"name" => $responseIp['geoplugin_countryName'],
-								"code" => $responseIp['geoplugin_countryCode']
+								"name" => $responseIp['country'] ?? NULL,
+								"code" => $responseIp['country_code'] ?? NULL
 							],
 							"coordenates" => [
-								"lat" => $responseIp['geoplugin_latitude'],
-								"lng" => $responseIp['geoplugin_longitude'],
-								"accuracyRadius" => $responseIp['geoplugin_locationAccuracyRadius']
+								"lat" => $responseIp['latitude'] ?? NULL,
+								"lng" => $responseIp['longitude'] ?? NULL,
 							]
 						],
-						"timezone" => $responseIp['geoplugin_timezone'],
-						"currency" => [
-							"code" => $responseIp['geoplugin_currencyCode'],
-							"symbol" => $responseIp['geoplugin_currencySymbol_UTF8']
-						]
+						"timezone" => $responseIp['timezone']['id'] ?? NULL,
 					];
 				}
 			}
 		}
-		return [];
+		
+		return [
+			"framework" 	=> false,
+			"ip"			=> [
+				"send"		=> $ip
+			],
+		];
 	}
 
 

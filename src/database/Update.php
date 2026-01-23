@@ -42,6 +42,8 @@ class Update extends Connect{
                 foreach($obj->data as $key => $value) {
                     $places[] = '`' . $key . '` = :' . $key;
                 }
+
+                $obj->table = '`' . $obj->table . '`';
             }
 
             if($driver == DBDriver::SQLServer){
