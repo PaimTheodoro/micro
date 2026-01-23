@@ -15,7 +15,7 @@ class Router{
 	private static  $patterns  	= [
 		'uuid4' 	=> "/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i",
 		'int'       => "/^\\d+$/", // Apenas números inteiros positivos
-		'string'    => "/^[a-zA-Z0-9_]+$/", // Alfanumérico e underscore
+		'string'    => "/^[a-zA-Z0-9_@=\-]+$/", // Alfanumérico e underscore
 		'slug'      => "/^[a-z0-9-]+$/", // Slug de URL (letras minúsculas, números e hífen)
 	];
 
