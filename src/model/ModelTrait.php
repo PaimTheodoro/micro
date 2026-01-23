@@ -7,10 +7,14 @@ trait ModelTrait{
         return new ModelQuery(self::class, $startWith);
     }
 
-    public static function findById(int $id) : ModelQuery {
-        return (new ModelQuery(self::class))->fields([
-            self::class . '.*',
-        ])->andWhere([self::class . '.id' => $id]);
+    public static function findById(int $id) {
+        if(!property_exists(self::class, 'id')){
+            throw new \Exception("A propriedade 'id' não foi encontrada na classe '" . self::class . "'.");
+        }
+        
+        return (new ModelQuery(self::class))
+        ->andWhere([self::class . '.id' => $id])
+        ->one();
     }
 
     public function __call($function, $value){
