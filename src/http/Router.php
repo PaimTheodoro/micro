@@ -130,8 +130,6 @@ class Router{
                         set_error_handler(function() {}, E_WARNING);
                         $isValidRegex = @preg_match($pattern, $urlPiece) !== false;
 
-                        // var_dump($isValidRegex, $pattern, $urlPiece);
-
                         restore_error_handler();
                         if(!$isValidRegex || !preg_match($pattern, $urlPiece)){
                             $isMatch = false;
