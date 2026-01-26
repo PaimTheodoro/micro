@@ -15,7 +15,7 @@ class Router{
 	private static  $patterns  	= [
 		'uuid4' 	=> "/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i",
 		'int'       => "/^\\d+$/", // Apenas números inteiros positivos
-		'string'    => "/^[a-zA-Z0-9_@=\-]+$/", // Alfanumérico e underscore
+		'string'    => "/^[a-zA-Z0-9_@=\-;]+$/", // Alfanumérico e underscore
 		'slug'      => "/^[a-z0-9-]+$/", // Slug de URL (letras minúsculas, números e hífen)
 	];
 
@@ -124,11 +124,14 @@ class Router{
                             $pattern = self::$patterns[$expression];
                         } else {
                             // Tenta usar como regex inline
-                            $pattern = $expression;
+                            $pattern = '/' . $expression . '/';
                         }
                         // Testa se a regex é válida
                         set_error_handler(function() {}, E_WARNING);
                         $isValidRegex = @preg_match($pattern, $urlPiece) !== false;
+
+                        // var_dump($isValidRegex, $pattern, $urlPiece);
+
                         restore_error_handler();
                         if(!$isValidRegex || !preg_match($pattern, $urlPiece)){
                             $isMatch = false;
