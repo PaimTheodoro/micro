@@ -73,7 +73,7 @@ class ModelQuery{
 
         return \PSF::getConfig()->db[$database]['database'] . '.' . $table;
     }
-
+ 
     private function getAcceptComparativeOperators() : array{
         return ['=', '<>', '>', '<', 'IS NULL', 'IS NOT NULL', 'LIKE'];
     }
@@ -570,7 +570,7 @@ class ModelQuery{
             $this->andWhere([$this->obj::class . '.' . $this->configDb['fields']['deletado'], 'IS NULL', NULL]);
         }else{
             if(property_exists($this->obj, 'deletado')){
-                $this->andWhere([$this->obj::class . '.deletado', 'IS NULL', NULL]);
+                $this->andWhere([$this->obj::class . '.deletado', 'IS NULL']);
             }
         }
 
