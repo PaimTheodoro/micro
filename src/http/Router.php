@@ -98,12 +98,24 @@ class Router{
         $this->piecesArr = explode("/", $url);
         $this->pieces = count($this->piecesArr);
 
+        // 1. Primeiro, tenta encontrar uma rota EXATA (sem parâmetros dinâmicos)
+        foreach($this->routes as $route){
+            if(
+                $route['attributes']['arguments']['method'] === $this->method &&
+                (empty($this->version) || $route['attributes']['arguments']['version'] === $this->version)
+            ){
+                $routePath = $route['attributes']['arguments']['path'];
+                // Verifica se a rota não tem parâmetros dinâmicos
+                if(strpos($routePath, '{') === false && $this->clearUrl($routePath) === $url){
+                    return $route;
+                }
+            }
+        }
+
+        // 2. Se não encontrou exata, faz o matching dinâmico (como já faz hoje)
         $potentialRoutes = array_filter($this->routes, function ($item){
-            // 1. Filtra por método HTTP
             if($item['attributes']['arguments']['method'] !== $this->method) return false;
-            // 2. Filtra por versão da API
             if(!empty($this->version) && $item['attributes']['arguments']['version'] !== $this->version) return false;
-            // 3. Filtra pelo número de segmentos na URL
             if(count(explode("/", $item['attributes']['arguments']['path'])) !== $this->pieces) return false;
             return true;
         });
@@ -111,6 +123,7 @@ class Router{
         foreach($potentialRoutes as $route){
             $pathPieces = explode("/", $route['attributes']['arguments']['path']);
             $isMatch = true;
+
             for($i = 0; $i < $this->pieces; $i++){
                 $routePiece = $pathPieces[$i];
                 $urlPiece = $this->piecesArr[$i];
@@ -123,13 +136,10 @@ class Router{
                         if(isset(self::$patterns[$expression])){
                             $pattern = self::$patterns[$expression];
                         } else {
-                            // Tenta usar como regex inline
                             $pattern = '/' . $expression . '/';
                         }
-                        // Testa se a regex é válida
                         set_error_handler(function() {}, E_WARNING);
                         $isValidRegex = @preg_match($pattern, $urlPiece) !== false;
-
                         restore_error_handler();
                         if(!$isValidRegex || !preg_match($pattern, $urlPiece)){
                             $isMatch = false;
@@ -141,12 +151,13 @@ class Router{
                     break;
                 }
             }
+
             if($isMatch){
-                return $route; // Retorna a primeira rota que corresponder
+                return $route;
             }
         }
 
-        return null; // Nenhuma rota encontrada
+        return null;
     }
 
     /**
