@@ -30,7 +30,7 @@ class APCU{
                 $allKeys = apcu_cache_info()['cache_list'];
 
                 foreach ($allKeys as $cacheEntry) {
-                    if (strpos($cacheEntry['info'], $initWith) === 0) {
+                    if (str_starts_with($cacheEntry['info'], $initWith)) {
                         apcu_delete($cacheEntry['info']);
                         $deleteds++;
                     }

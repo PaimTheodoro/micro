@@ -3,8 +3,10 @@
 namespace Psf\Model;
 
 use \Psf\Database\{Connect, Create, Delete, Update};
+use \Psf\Database\Dialect\DialectFactory;
 use \Psf\Model\ModelQuery;
-use \Psf\Helper\UUID;
+use \Psf\Model\ModelSerializer;
+use \Psf\Model\ModelHydrator;
 use \Psf\Http\Http;
 
 use \Psf\Enumerators\{DBDriver};
@@ -16,18 +18,11 @@ class Model{
 		}
 	}
 
-	/**
-	 * Verifica se um atributo é do tipo especificado
-	 */
 	private static function isAttributeType($attribute, string $type): bool {
 		$className = $attribute->getName();
-		// Usa substr_compare para compatibilidade com PHP < 8.0
 		return substr_compare($className, $type, -strlen($type)) === 0 || $className === $type;
 	}
 
-	/**
-	 * Encontra um atributo do tipo especificado
-	 */
 	private static function findAttributeByType($attributes, string $type) {
 		return array_values(array_filter($attributes, function($attr) use ($type) {
 			return self::isAttributeType($attr, $type);
@@ -40,6 +35,46 @@ class Model{
 		}, array_filter($this->getColunsForTable(), function($item){
 			return $item->Key === 'PRI';
 		})));
+	}
+
+	/**
+	 * Retorna WHERE clause parametrizada para a(s) chave(s) primária(s).
+	 * Evita injeção SQL ao substituir a interpolação direta de valores por bindings PDO.
+	 * @return array{terms: string, params: array<string, mixed>}
+	 */
+	private function getPrimaryBindings(): array {
+		$configDb = \PSF::getConfig()->db[Model::getDatabase($this)];
+		$driver   = !empty($configDb['driver']) ? $configDb['driver'] : DBDriver::MySQL;
+
+		$primarys = [];
+		$refClass = new \ReflectionClass($this::class);
+		foreach ($refClass->getProperties() as $property) {
+			$attributes  = $property->getAttributes();
+			$primarysKey = Model::findAttributeByType($attributes, 'PrimaryKey');
+			if (!empty($primarysKey)) {
+				foreach ($primarysKey as $column) {
+					$primarys[] = $property->getName();
+				}
+				break;
+			}
+		}
+
+		if (empty($primarys)) {
+			throw new \Exception("DB Error - Primary Key Not Found");
+		}
+
+		$table   = Model::getTable($this);
+		$dialect = DialectFactory::fromConfig($configDb);
+		$parts   = [];
+		$params  = [];
+
+		foreach ($primarys as $prop) {
+			$placeholder           = 'pk_bind_' . $prop;
+			$parts[]               = $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier($prop) . ' = :' . $placeholder;
+			$params[$placeholder]  = $this->{$prop};
+		}
+
+		return ['terms' => 'WHERE ' . implode(' AND ', $parts), 'params' => $params];
 	}
 
 	public function getPrimarysQuery(bool $query = false){
@@ -65,28 +100,19 @@ class Model{
 			throw new \Exception("DB Error - Primary Key Not Found");
 		}
 
-		if($query){
-	       	if(count($primarys) == 1){
-	       		return $driver === DBDriver::MySQL ? ("`". Model::getTable($this) ."`.`".$primarys[0]."` = ".$this->{$primarys[0]}) : ($driver === DBDriver::SQLServer ? ($primarys[0]." = ".$this->{$primarys[0]}) : []);
-	       	}else if(count($primarys) > 1){
-	       		$string = "";
-	       		$count = 0;
-
-	       		foreach($primarys as $item){
-	       			if($count > 0){
-	       				$string .= " AND ";
-	       			}
-	       			if($driver === DBDriver::MySQL){
-	       				$string .= " `" . Model::getTable($this) ."`.`". $item . "` = " . $this->{$item};
-	       			}else if($driver === DBDriver::SQLServer){
-	       				$string .= " " . $item . " = " . $this->{$item};
-	       			}
-	       			$count++;
-	       		}
-
-	       		return $string;
-	       	}
-	    }
+		if ($query) {
+			$configDb2 = \PSF::getConfig()->db[Model::getDatabase($this)];
+			$dialect   = DialectFactory::fromConfig($configDb2);
+			$table     = Model::getTable($this);
+			$parts     = array_map(
+				fn($item) => $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier($item) . ' = ' . $this->{$item},
+				$primarys
+			);
+			return match (true) {
+				count($primarys) >= 1 => implode(' AND ', $parts),
+				default               => [],
+			};
+		}
 
 	    return $primarys;
 	}
@@ -95,131 +121,17 @@ class Model{
 		return Connect::getColunsForTable(Model::getTable($this), Model::getDatabase($this));
 	}
 
+	/** @see ModelSerializer::serializeFields() */
 	public static function serializeFields($object, $removePrimarys = FALSE) : array{
-		$refClass = new \ReflectionClass($object::class);
-		foreach($refClass->getProperties() as $property){
-			$attributes = $property->getAttributes();
-
-			$column = Model::findAttributeByType($attributes, 'Column');
-
-			if(!empty($column)){
-				$args = $column[0]->getArguments();
-				$colName = null;
-				if (isset($args[0])) {
-					$colName = $args[0];
-				} elseif (isset($args['name'])) {
-					$colName = $args['name'];
-				}
-				$column = $colName;
-
-				if($removePrimarys){
-					$isPrimaryKey = Model::findAttributeByType($attributes, 'PrimaryKey');
-
-					if(!empty($isPrimaryKey)){
-						continue;
-					}
-				}
-
-				$typeValue = Model::findAttributeByType($attributes, 'Type');
-				if(!empty($typeValue) && isset($typeValue[0])){
-					$args = $typeValue[0]->getArguments();
-					if (isset($args[0])) {
-						$typeValue = $args[0];
-					} elseif (isset($args['type'])) {
-						$typeValue = $args['type'];
-					} else {
-						$typeValue = NULL;
-					}
-				}else{
-					$typeValue = NULL;
-				}
-
-				$standardValue = Model::findAttributeByType($attributes, 'Standard');
-				if(!empty($standardValue) && isset($standardValue[0]) && empty($object->{$property->getName()})){
-					$args = $standardValue[0]->getArguments();
-					$stdValue = null;
-					if (isset($args[0])) {
-						$stdValue = $args[0];
-					} elseif (isset($args['value'])) {
-						$stdValue = $args['value'];
-					}
-					
-					if($stdValue !== null){
-						if(is_numeric($stdValue)){
-							$object->{$property->getName()} = $stdValue;
-						}else if(property_exists($stdValue, 'value')){
-							$object->{$property->getName()} = $stdValue->value;
-						}else{
-							if(strtoupper($stdValue) === 'NOW()'){
-								$object->{$property->getName()} = date('Y-m-d H:i:s');
-							}else if(strtoupper($stdValue) === 'UUIDV4'){
-								$object->{$property->getName()} = UUID::generate('4');
-							}else{
-								$object->{$property->getName()} = $stdValue;
-							}
-						}
-
-						$fields[$column] = $object->{$property->getName()};
-					}
-				}
-
-				$columnCreatedDate = Model::findAttributeByType($attributes, 'ColumnCreatedDate');
-				if(!empty($columnCreatedDate) && empty($object->{$property->getName()})){
-					if(in_array($typeValue, ['timestamp', 'bigint'])){
-						$newValue = time();
-					}else{
-						$newValue = date('Y-m-d H:i:s');
-					}
-
-					$object->{$property->getName()} = $newValue;
-					$fields[$column] = $newValue;
-				}
-
-				$columnUpdatedDate = Model::findAttributeByType($attributes, 'ColumnUpdatedDate');
-				if(!empty($columnUpdatedDate) && empty($object->{$property->getName()})){
-					if(in_array($typeValue, ['timestamp', 'bigint'])){
-						$newValue = time();
-					}else{
-						$newValue = date('Y-m-d H:i:s');
-					}
-
-					$object->{$property->getName()} = $newValue;
-					$fields[$column] = $newValue;
-				}
-
-				$required = Model::findAttributeByType($attributes, 'Nullable');
-				if(!empty($required) && isset($required[0])){
-					$args = $required[0]->getArguments();
-					if (isset($args[0])) {
-						$required = $args[0];
-					} elseif (isset($args['nullable'])) {
-						$required = $args['nullable'];
-					} else {
-						$required = true; // padrão
-					}
-				}
-
-				if($required === FALSE && empty($object->{$property->getName()})){
-					return throw new \Exception("O campo '" . $property->getName() . "' não pode ser nulo");
-				}else if(!empty($required)){
-					$fields[$column] = $object->{$property->getName()};
-				}
-
-				if((!empty($object->{$property->getName()}) || $object->{$property->getName()} == 0) && empty($fields[$column])){
-					$fields[$column] = $object->{$property->getName()};
-				}
-			}
-		}
-
-		return $fields ?? [];
+		return ModelSerializer::serializeFields($object, $removePrimarys);
 	}
 
 	public function create(){
 		$fields = Model::serializeFields(object: $this, removePrimarys: TRUE);
 
 		$Create = Create::exe(
-			table: Model::getTable($this), 
-			data: $fields, 
+			table: Model::getTable($this),
+			data: $fields,
 			database: Model::getDatabase($this)
 		);
 
@@ -248,11 +160,13 @@ class Model{
 			}
 		}
 
+		$bindings = $this->getPrimaryBindings();
 		$Update = Update::exe(
-			table: Model::getTable($this::class), 
-			data: $fields, 
-			terms: 'WHERE ' . $this->getPrimarysQuery(true), 
-			database: Model::getDatabase($this::class)
+			table: Model::getTable($this::class),
+			data: $fields,
+			terms: $bindings['terms'],
+			database: Model::getDatabase($this::class),
+			termsParams: $bindings['params']
 		);
 
 		return $Update->getResult();
@@ -301,10 +215,12 @@ class Model{
 		}
 
 		if(!$softDelete){
+			$bindings = $this->getPrimaryBindings();
 			Delete::exe(
 				table: Model::getTable($this::class),
-				terms: 'WHERE ' . $this->getPrimarysQuery(true),
-				database: Model::getDatabase($this::class)
+				terms: $bindings['terms'],
+				database: Model::getDatabase($this::class),
+				termsParams: $bindings['params']
 			);
 
 			return TRUE;
@@ -332,7 +248,7 @@ class Model{
 				$fieldName = $item->Field;
 				$arrReturn[$item->Field] = $this->$fieldName;
 			}
-		}		
+		}
 		return $arrReturn ?? [];
 	}
 
@@ -346,16 +262,15 @@ class Model{
 
 		$db = Connect::getConnection($this->database);
 
-		if($driver == DBDriver::SQLServer){
-			$query = "SELECT COLUMN_NAME
-			FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_NAME = '" . $this->table . "' AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
-		}
+		$query = match ($driver) {
+			DBDriver::SQLServer => "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" . $this->table . "' AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1",
+			default             => null,
+		};
 
-		if(isset($query)){
+		if ($query !== null) {
 			$statement = $db->prepare($query);
 
-			try{    
+			try{
 	            $statement->execute();
 	            $coluns = $statement->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -365,7 +280,7 @@ class Model{
 
 	            return $coluns;
 	        }catch (\PDOException $e){
-	            explodeException($e); 
+	            explodeException($e);
 	            return FALSE;
 	        }
 		}
@@ -384,7 +299,7 @@ class Model{
 				return $args['name'];
 			}
 		}
-		return FALSE; 
+		return FALSE;
 	}
 
 	public static function getDatabase($class){
@@ -398,186 +313,17 @@ class Model{
 				return $args['name'];
 			}
 		}
-		return 'default'; 
+		return 'default';
 	}
 
+	/** @see ModelSerializer::serializeData() */
 	public static function serializeData($class, array $data, bool $asArray = FALSE, null|array $joins = []) : object|array|null{
-		$response = new $class;
-		$refClass = new \ReflectionClass($class);
-
-		if(!$asArray){
-			foreach($refClass->getProperties() as $property){
-				$attributes = $property->getAttributes();
-
-				$column = Model::findAttributeByType($attributes, 'Column');
-
-				if(!empty($column)){
-					$args = $column[0]->getArguments();
-					$columnName = null;
-					if (isset($args[0])) {
-						$columnName = $args[0];
-					} elseif (isset($args['name'])) {
-						$columnName = $args['name'];
-					}
-					$response->{$property->getName()} = !empty($data[$columnName]) || (isset($data[$columnName]) && $data[$columnName] == 0) ? $data[$columnName] : NULL;
-				}else{
-					if(!empty($joins)){
-						$findJoinForProperty = array_filter($joins, function($item) use ($property){
-							return !empty($item['andSelect']) && $item['andSelect'] == $property->getName();
-						});
-
-						if(!empty($findJoinForProperty)){
-							$findJoinForProperty = $findJoinForProperty[0];
-							
-							foreach ($data as $key => $value) {
-								if(str_starts_with($key, $findJoinForProperty['andSelect'] . '_')){
-									$classRelation = is_array($findJoinForProperty['table']) ? $findJoinForProperty['table'][0] : $findJoinForProperty['table'];
-
-									if(!is_object($response->{$findJoinForProperty['andSelect']})){
-										$response->{$findJoinForProperty['andSelect']} = new $classRelation;
-									}
-
-									$objectField = explode('_', $key);
-									unset($objectField[0]); 
-
-									$getColumnRelation = Model::getPropByColumn($classRelation, implode('_', $objectField));
-
-									if(!empty($getColumnRelation)){
-										$response->{$findJoinForProperty['andSelect']}->{$getColumnRelation} = $value;
-									}
-								}							
-							}
-						}
-					}
-
-					if(isset($data[$property->getName()])){
-						if(!$property->isStatic()){
-							$response->{$property->getName()} = $data[$property->getName()];
-						}
-					}
-				}
-			}
-		}else{
-			$response = [];
-			
-			foreach(array_keys($data) as $key){
-				$findColumnExist = array_values(array_filter($refClass->getProperties(), function($prop) use ($key){
-					$attributes = $prop->getAttributes();
-
-					$column = Model::findAttributeByType($attributes, 'Column');
-					if(!empty($column) && isset($column[0])){
-						$args = $column[0]->getArguments();
-						$colName = null;
-						if (isset($args[0])) {
-							$colName = $args[0];
-						} elseif (isset($args['name'])) {
-							$colName = $args['name'];
-						}
-						if($colName == $key){
-							return $colName;
-						}
-					}
-				}));
-
-				if(!empty($findColumnExist)){
-					$response[$findColumnExist[0]->getName()] = $data[$key];
-
-					$verifyIsEnum = Model::propIsEnum($class, Model::getPropByColumn($class, $key));
-					if(!empty($verifyIsEnum)){
-						
-					}
-				}else{
-					if(!empty($joins)){
-						$findJoinForProperty = array_filter($joins, function($item) use ($key){
-							return !empty($item['andSelect']) && $item['andSelect'];
-						});
-
-						if(!empty($findJoinForProperty)){
-							$findJoinForProperty = $findJoinForProperty[0];
-							
-							if(str_starts_with($key, $findJoinForProperty['andSelect'] . '_')){
-								$classRelation = is_array($findJoinForProperty['table']) ? $findJoinForProperty['table'][0] : $findJoinForProperty['table'];
-
-								$objectField = explode('_', $key);
-								unset($objectField[0]); 
-
-								$getColumnRelation = Model::getPropByColumn($classRelation, implode('_', $objectField));
-
-								if(!empty($getColumnRelation)){
-									$response[$findJoinForProperty['andSelect']][$getColumnRelation] = $data[$key];
-									continue;
-								}	
-							}else if(str_starts_with($key, $findJoinForProperty['andSelect'] . '#')){
-								$classRelation = is_array($findJoinForProperty['table']) ? $findJoinForProperty['table'][0] : $findJoinForProperty['table'];
-
-								$objectField = explode('#', $key);
-
-								$newFields = $objectField;
-								unset($newFields[0]);
-
-								$newFields = implode('_', $newFields);
-								$objectFieldAttr = explode('_', $newFields);
-
-								$findJoinForPropertyTwo = array_values(array_filter($joins, function($item) use ($objectField, $objectFieldAttr){
-									return !empty($item['andSelect']) && ($item['andSelect'] == ($objectField[0] . '.' . $objectFieldAttr[0]));
-								}));
-
-								if($findJoinForPropertyTwo){
-									$findJoinForPropertyTwo = $findJoinForPropertyTwo[0];
-									$classRelationTwo = is_array($findJoinForPropertyTwo['table']) ? $findJoinForPropertyTwo['table'][0] : $findJoinForPropertyTwo['table'];
-
-									$fieldTwo = $objectFieldAttr[0];
-									unset($objectFieldAttr[0]);
-									$objectFieldAttr = array_values($objectFieldAttr);
-									$getColumnRelation = Model::getPropByColumn($classRelationTwo, implode('_', $objectFieldAttr));
-									
-									if(!empty($getColumnRelation)){
-										$response[$findJoinForProperty['andSelect']][$fieldTwo][$getColumnRelation] = $data[$key];
-										continue;
-									}
-									
-								}
-							}
-						}
-					}
-
-					$response[$key] = $data[$key];
-				}
-			}
-		}
-
-		return $response;
+		return ModelSerializer::serializeData($class, $data, $asArray, $joins);
 	}
 
+	/** @see ModelHydrator::getPropByColumn() */
 	public static function getPropByColumn($class, $column){
-		$refClass = new \ReflectionClass($class);
-
-		if(!empty($refClass->getProperties())){
-			foreach ($refClass->getProperties() as $prop) {
-				$getAttrs = $prop->getAttributes();
-
-				if(!empty($getAttrs)){
-					$findColumn = Model::findAttributeByType($getAttrs, 'Column');
-
-		            if(!empty($findColumn) && isset($findColumn[0])){
-		            	$args = $findColumn[0]->getArguments();
-		            	$colName = null;
-		            	if (isset($args[0])) {
-		            		$colName = $args[0];
-		            	} elseif (isset($args['name'])) {
-		            		$colName = $args['name'];
-		            	}
-		            	
-		            	if($colName == $column){
-		            		return $prop->getName();
-		            		break;
-		            	}
-		            }
-				}
-			}
-		}
-
-		return FALSE;
+		return ModelHydrator::getPropByColumn($class, $column);
 	}
 
 	public static function getPrimaryKey($class, $type = 'column'){
@@ -595,83 +341,16 @@ class Model{
 			}
 		}
 
-		return !empty($primarys) ? $primarys : NULL; 
+		return !empty($primarys) ? $primarys : NULL;
 	}
 
+	/** @see ModelHydrator::getColumnByProp() */
 	public static function getColumnByProp($class, $prop = null) : string|array|bool{
-		$refClass = new \ReflectionClass($class);
-
-		if(!empty($prop)){
-			if(is_array($prop)){
-				$findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($prop){
-		            return in_array($item->getName(), $prop);
-		        }));
-			}else{
-		        $findPropertie = array_values(array_filter($refClass->getProperties(), function($item) use ($prop){
-		            return $prop === $item->getName();
-		        }));
-		    }
-	    }else{
-	    	$findPropertie = $refClass->getProperties();
-	    }
-
-        if(!empty($findPropertie)){
-        	foreach($findPropertie as $propItem){
-        		$attributes = $propItem->getAttributes();
-
-	            $column = Model::findAttributeByType($attributes, 'Column');
-
-	            if(!empty($column) && isset($column[0])){
-	            	$args = $column[0]->getArguments();
-	            	$colName = null;
-	            	if (isset($args[0])) {
-	            		$colName = $args[0];
-	            	} elseif (isset($args['name'])) {
-	            		$colName = $args['name'];
-	            	}
-	            	if ($colName !== null) {
-	            		$columns[] = $colName;
-	            	}
-	            }
-        	}
-
-        	return empty($prop) || is_array($prop) ? $columns : (!empty($columns) ? $columns[0] : FALSE);
-        }
-
-		return FALSE;
+		return ModelHydrator::getColumnByProp($class, $prop);
 	}
 
+	/** @see ModelHydrator::propIsEnum() */
 	public static function propIsEnum($class, $property){
-		$refClass = new \ReflectionClass($class);
-
-		$findPropEnum = array_values(array_filter(array_map(function($prop) use ($property){
-			if($prop->getName() != $property){
-				return FALSE;
-			}
-
-			$attributes = $prop->getAttributes();
-
-			$enum = Model::findAttributeByType($attributes, 'Enum');
-
-			if(empty($enum)){
-				return FALSE;
-			}else{
-				if (isset($enum[0])) {
-					$args = $enum[0]->getArguments();
-					if (isset($args[0])) {
-						$enum = $args[0];
-					} elseif (isset($args['enumClass'])) {
-						$enum = $args['enumClass'];
-					} else {
-						$enum = null;
-					}
-				} else {
-					$enum = null;
-				}
-				return $enum;
-			}
-		}, $refClass->getProperties()), fn($if) => !empty($if)));
-
-		return empty($findPropEnum) ? FALSE : $findPropEnum[0]; 
+		return ModelHydrator::propIsEnum($class, $property);
 	}
 }

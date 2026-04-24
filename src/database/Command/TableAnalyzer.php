@@ -3,6 +3,7 @@
 namespace Psf\Database\Command;
 
 use Phinx\Console\Command\AbstractCommand;
+use Psf\Model\MetadataCache;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -13,7 +14,7 @@ class TableAnalyzer extends AbstractCommand
 {
     protected static $defaultName = 'analyze:table-vs-model';
 
-    protected function configure()
+    protected function configure(): void
     {
         $this
             ->setDescription('Analisa uma tabela do banco de dados e compara com um modelo existente')
@@ -23,7 +24,7 @@ class TableAnalyzer extends AbstractCommand
             ->setHelp('Este comando analisa uma tabela do banco de dados e compara com um modelo PHP existente, identificando diferenças e sugerindo correções.');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $tableName = $input->getArgument('table');
@@ -74,111 +75,108 @@ class TableAnalyzer extends AbstractCommand
         }
     }
 
-    private function getModelColumns($modelClass)
+    /**
+     * Retorna as colunas do modelo usando o mapeamento ORM real (#[Column] attributes).
+     * Indexado por nome de coluna do banco (não pelo nome da propriedade PHP).
+     * Retorna ['column_name' => ['name' => ..., 'property' => ..., 'type' => ..., 'null' => bool]]
+     */
+    private function getModelColumns(string $modelClass): array
     {
-        // Verifica se a classe existe
         if (!class_exists($modelClass)) {
             throw new \Exception("Classe '{$modelClass}' não encontrada.");
         }
 
-        // Cria uma instância do modelo para análise
-        $model = new $modelClass();
-        
-        // Obtém as propriedades públicas da classe
-        $reflection = new \ReflectionClass($model);
-        $properties = $reflection->getProperties(\ReflectionProperty::IS_PUBLIC);
-        
+        $columnMap = MetadataCache::getColumnMap($modelClass);
+
+        if (empty($columnMap)) {
+            throw new \Exception("Modelo '{$modelClass}' não possui #[Column] attributes — verifique se é um Model PSF válido.");
+        }
+
         $columns = [];
-        foreach ($properties as $property) {
-            $name = $property->getName();
-            $type = $this->getPropertyType($property);
-            
-            $columns[$name] = [
-                'name' => $name,
-                'type' => $type,
-                'null' => true, // Assume nullable por padrão
+        foreach ($columnMap as $propName => $colName) {
+            $columns[$colName] = [
+                'name'     => $colName,
+                'property' => $propName,
+                'type'     => $this->getPropertyPhpType($modelClass, $propName),
+                'null'     => MetadataCache::isNullable($modelClass, $propName),
             ];
         }
-        
+
         return $columns;
     }
 
-    private function getPropertyType($property)
+    private function getPropertyPhpType(string $modelClass, string $propName): string
     {
-        // Tenta obter o tipo do docblock
-        $docComment = $property->getDocComment();
-        if ($docComment) {
-            if (preg_match('/@var\s+(\w+)/', $docComment, $matches)) {
-                return $matches[1];
+        try {
+            $prop = new \ReflectionProperty($modelClass, $propName);
+            $type = $prop->getType();
+            if ($type instanceof \ReflectionNamedType) {
+                return $type->getName();
             }
+        } catch (\ReflectionException $e) {
+            // ignora — retorna string como fallback
         }
-        
-        // Tipo padrão
         return 'string';
     }
 
-    private function analyzeDifferences($tableColumns, $modelColumns, $tableName, $modelClass)
+    private function analyzeDifferences(array $tableColumns, array $modelColumns, string $tableName, string $modelClass): array
     {
         $analysis = [
-            'table_name' => $tableName,
-            'model_class' => $modelClass,
+            'table_name'       => $tableName,
+            'model_class'      => $modelClass,
             'missing_in_model' => [],
             'missing_in_table' => [],
-            'type_mismatches' => [],
-            'suggestions' => []
+            'type_mismatches'  => [],
+            'suggestions'      => [],
         ];
 
-        // Colunas que existem na tabela mas não no modelo
-        foreach ($tableColumns as $column) {
-            $columnName = $column['name'];
-            if (!isset($modelColumns[$columnName])) {
+        // Indexa colunas do banco por nome para lookup O(1)
+        $dbColumnsByName = [];
+        foreach ($tableColumns as $col) {
+            $dbColumnsByName[$col->getName()] = $col;
+        }
+
+        // Colunas que existem na tabela mas não no modelo (usa #[Column] mapping)
+        foreach ($dbColumnsByName as $colName => $col) {
+            if (!isset($modelColumns[$colName])) {
                 $analysis['missing_in_model'][] = [
-                    'name' => $columnName,
-                    'type' => $column['type'],
-                    'null' => $column['null']
+                    'name' => $colName,
+                    'type' => $col->getType(),
+                    'null' => $col->isNull(),
                 ];
             }
         }
 
         // Colunas que existem no modelo mas não na tabela
-        foreach ($modelColumns as $column) {
-            $columnName = $column['name'];
-            $found = false;
-            foreach ($tableColumns as $tableColumn) {
-                if ($tableColumn['name'] === $columnName) {
-                    $found = true;
-                    break;
-                }
-            }
-            
-            if (!$found) {
+        foreach ($modelColumns as $colName => $modelCol) {
+            if (!isset($dbColumnsByName[$colName])) {
                 $analysis['missing_in_table'][] = [
-                    'name' => $columnName,
-                    'type' => $column['type']
+                    'name'     => $colName,
+                    'property' => $modelCol['property'],
+                    'type'     => $modelCol['type'],
                 ];
             }
         }
 
-        // Verifica incompatibilidades de tipo
-        foreach ($tableColumns as $tableColumn) {
-            $columnName = $tableColumn['name'];
-            if (isset($modelColumns[$columnName])) {
-                $modelColumn = $modelColumns[$columnName];
-                $tableType = $this->mapDatabaseTypeToPhpType($tableColumn['type']);
-                $modelType = $modelColumn['type'];
-                
-                if ($tableType !== $modelType) {
-                    $analysis['type_mismatches'][] = [
-                        'name' => $columnName,
-                        'table_type' => $tableColumn['type'],
-                        'model_type' => $modelType,
-                        'suggested_type' => $tableType
-                    ];
-                }
+        // Incompatibilidades de tipo (coluna existe em ambos)
+        foreach ($modelColumns as $colName => $modelCol) {
+            if (!isset($dbColumnsByName[$colName])) continue;
+
+            $dbCol      = $dbColumnsByName[$colName];
+            $tablePhpType = $this->mapDatabaseTypeToPhpType($dbCol->getType());
+            $modelPhpType = $modelCol['type'];
+
+            if ($tablePhpType !== $modelPhpType) {
+                $analysis['type_mismatches'][] = [
+                    'name'           => $colName,
+                    'property'       => $modelCol['property'],
+                    'table_type'     => $dbCol->getType(),
+                    'model_type'     => $modelPhpType,
+                    'suggested_type' => $tablePhpType,
+                ];
             }
         }
 
-        // Gera sugestões
         $analysis['suggestions'] = $this->generateSuggestions($analysis);
 
         return $analysis;
@@ -188,13 +186,13 @@ class TableAnalyzer extends AbstractCommand
     {
         $type = strtolower($databaseType);
         
-        if (strpos($type, 'int') !== false) {
+        if (str_contains($type, 'int')) {
             return 'int';
-        } elseif (strpos($type, 'decimal') !== false || strpos($type, 'float') !== false || strpos($type, 'double') !== false) {
+        } elseif (str_contains($type, 'decimal') || str_contains($type, 'float') || str_contains($type, 'double')) {
             return 'float';
-        } elseif (strpos($type, 'bool') !== false) {
+        } elseif (str_contains($type, 'bool')) {
             return 'bool';
-        } elseif (strpos($type, 'date') !== false || strpos($type, 'time') !== false) {
+        } elseif (str_contains($type, 'date') || str_contains($type, 'time')) {
             return 'string';
         } else {
             return 'string';

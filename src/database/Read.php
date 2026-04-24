@@ -10,16 +10,19 @@ class Read extends Connect{
     private $read;
     private $connection;
     
-    public function exe($table, $string = null, $parseString = null, $database = 'default', $free = false){
-        if(!empty($parseString)){
-            $this->places = [];
-
-            $explodeParses = explode("&", $parseString);
-
-            foreach($explodeParses as $item){
-                $explodeTwo = explode("=", $item);
-                $this->places[$explodeTwo[0]] = $explodeTwo[1];
-            }           
+    public function exe($table, $string = null, array|string|null $parseString = null, $database = 'default', $free = false){
+        if (!empty($parseString)) {
+            if (is_array($parseString)) {
+                $this->places = $parseString;
+            } else {
+                $this->places = [];
+                foreach (explode('&', $parseString) as $item) {
+                    $parts = explode('=', $item, 2);
+                    if (isset($parts[1])) {
+                        $this->places[$parts[0]] = $parts[1];
+                    }
+                }
+            }
         }
         
         if($free == false){

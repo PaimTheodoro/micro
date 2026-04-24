@@ -4,6 +4,9 @@ namespace Psf\Http;
 
 class Http{
 
+	/**
+	 * @deprecated Use \Psf\Http\Request::get/post/put/delete() instead.
+	 */
 	public static function request($method, $url, $body, $headers = []){
 		$curl = curl_init();
 
@@ -51,7 +54,7 @@ class Http{
 
 	public static function response($message = "", $data = [], $status = 200, $headers = []){
 		header('Content-Type: application/json');
-		header("HTTP/1.0  " . $status .  " " . 200);
+		http_response_code($status);
 		
 		if(!empty($headers)){
 			foreach($headers as $header => $value){

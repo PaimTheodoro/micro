@@ -11,7 +11,7 @@ class Delete extends Connect{
     private $connection;
     private $database;
 
-    public static function exe($table, $terms, $parseString = null, $database = 'default'){
+    public static function exe($table, $terms, $parseString = null, $database = 'default', array $termsParams = []){
         $obj = new Delete;
 
         if(empty(self::$connection)){
@@ -29,7 +29,7 @@ class Delete extends Connect{
             try{
                 $obj->delete = $obj->connection->prepare($obj->delete);
 
-                $obj->delete->execute($obj->places);
+                $obj->delete->execute(array_merge($obj->places, $termsParams));
                 $obj->result = true;
 
                 return $obj;
@@ -41,9 +41,8 @@ class Delete extends Connect{
                 $obj->result = null;
                 explodeException($e);
 
-                return false;  
+                return false;
             }
-            return $this;
         }
     }
     

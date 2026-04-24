@@ -35,6 +35,17 @@
         "bin/phinx"
     ],
     "require-dev": {
-        "robmorgan/phinx": "0.x-dev"
+        "robmorgan/phinx": "0.x-dev",
+        "pestphp/pest": "^3.0"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
     }
 }

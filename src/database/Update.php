@@ -2,7 +2,7 @@
 
 namespace Psf\Database;
 
-use \Psf\Enumerators\{DBDriver};
+use Psf\Database\Dialect\DialectFactory;
 
 class Update extends Connect{
     private $table;
@@ -14,7 +14,7 @@ class Update extends Connect{
     private $connection;
     private $database;
 
-    public static function exe($table, array $data, $terms, $parseString = null, $database = 'default'){
+    public static function exe($table, array $data, $terms, $parseString = null, $database = 'default', array $termsParams = []){
         $configDb   = \PSF::getConfig()->db;
         $obj        = new Update;
 
@@ -27,8 +27,7 @@ class Update extends Connect{
         $obj->terms = $terms;  
 
         if(self::verifyTableExist($table, $database)){
-            $configDb   = \PSF::getConfig()->db;
-            $driver     = !empty($configDb[$database]['driver']) ? $configDb[$database]['driver'] : DBDriver::MySQL;
+            $dialect = DialectFactory::fromConfig($configDb[$database]);
 
             if(!empty($parseString) && !empty($obj->places)){
                 parse_str($parseString, $obj->places);
@@ -36,30 +35,18 @@ class Update extends Connect{
                 $obj->places = [];
             }
 
-            // parse_str($parseString, $obj->places);
-
-            if($driver == DBDriver::MySQL){
-                foreach($obj->data as $key => $value) {
-                    $places[] = '`' . $key . '` = :' . $key;
-                }
-
-                $obj->table = '`' . $obj->table . '`';
+            foreach($obj->data as $key => $value) {
+                $places[] = $dialect->quoteIdentifier($key) . ' = :' . $key;
             }
-
-            if($driver == DBDriver::SQLServer){
-                foreach($obj->data as $key => $value) {
-                    $places[] = '[' . $key . '] = :' . $key;
-                }
-            }
-            
             $places = implode(', ', $places);
 
-            $obj->update = "UPDATE {$obj->table} SET {$places} {$obj->terms}";
+            $quotedTable = $dialect->quoteIdentifier($obj->table);
+            $obj->update = "UPDATE {$quotedTable} SET {$places} {$obj->terms}";
 
             $obj->update = $obj->connection->prepare($obj->update);
         
             try{
-                $obj->update->execute(array_merge($obj->data, $obj->places));
+                $obj->update->execute(array_merge($obj->data, $obj->places, $termsParams));
                 $obj->result = true;
 
                 return $obj;

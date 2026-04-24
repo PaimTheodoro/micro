@@ -2,7 +2,7 @@
 
 namespace Psf\Database;
 
-use \Psf\Enumerators\{DBDriver};
+use Psf\Database\Dialect\DialectFactory;
 
 class Create extends Connect{
     private $table;
@@ -25,19 +25,14 @@ class Create extends Connect{
         $obj->data = $data;
         
         if(self::verifyTableExist($table, $database)){
-            $driver     = !empty($configDb[$database]['driver']) ? $configDb[$database]['driver'] : DBDriver::MySQL;
-
-            if($driver == DBDriver::MySQL){
-                $fields = "`" . implode('`, `', array_keys($obj->data)) . "`";
-            }
-
-            if($driver == DBDriver::SQLServer){
-                $fields = "[" . implode('], [', array_keys($obj->data)) . "]";
-            }
-
+            $dialect = DialectFactory::fromConfig($configDb[$database]);
+            $fields  = implode(', ', array_map(
+                fn($col) => $dialect->quoteIdentifier($col),
+                array_keys($obj->data)
+            ));
             $places = ':' . implode(', :', array_keys($obj->data));
 
-            $obj->create = "INSERT INTO `{$obj->table}` ({$fields}) VALUES ({$places})";
+            $obj->create = "INSERT INTO " . $dialect->quoteIdentifier($obj->table) . " ({$fields}) VALUES ({$places})";
             $obj->create = $obj->connection->prepare($obj->create);
 
             try{

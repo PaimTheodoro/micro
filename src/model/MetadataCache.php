@@ -36,15 +36,35 @@ class MetadataCache{
     }
 
     /**
-     * Busca um valor do cache. Se não existir, o produz usando o callable,
-     * armazena o resultado e o retorna.
+     * Busca um valor do cache. L1 = array estático (por requisição). L2 = APCu (cross-request).
+     * Se não existir em nenhum nível, produz o valor via $producer, armazena em ambos e retorna.
      */
-    private static function fetch(string $class, string $key, callable $producer){
+    private static function fetch(string $class, string $key, callable $producer): mixed
+    {
+        // L1 — memória da requisição atual (instantâneo, sem serialização)
         if (isset(self::$cache[$class][$key])) {
             return self::$cache[$class][$key];
         }
 
-        return self::$cache[$class][$key] = $producer();
+        // L2 — APCu cross-request (quando disponível e habilitado)
+        $apcu        = extension_loaded('apcu') && apcu_enabled();
+        $apcuKey     = 'psf_meta_' . md5($class) . '_' . $key;
+
+        if ($apcu) {
+            $value = apcu_fetch($apcuKey, $success);
+            if ($success) {
+                return self::$cache[$class][$key] = $value;
+            }
+        }
+
+        $value = $producer();
+        self::$cache[$class][$key] = $value;
+
+        if ($apcu) {
+            apcu_store($apcuKey, $value, 3600);
+        }
+
+        return $value;
     }
 
     /**
@@ -87,9 +107,10 @@ class MetadataCache{
 
     /**
      * Obtém todo o mapa de colunas para uma classe, usando o cache.
+     * Retorna ['nomeDaPropriedade' => 'nome_da_coluna_no_banco'].
      */
     public static function getColumnMap(string $class): array{
-        return self::fetch($class, 'columns', fn() => Model::getColumnByProp($class));
+        return self::getColumnByProp($class) ?: [];
     }
 
     /**
@@ -241,12 +262,28 @@ class MetadataCache{
     }
 
     /**
-     * Limpa o cache para uma classe específica ou todo o cache.
+     * Limpa o cache L1 (e APCu L2 quando disponível) para uma classe específica ou tudo.
      */
-    public static function clearCache(?string $class = null): void{
+    public static function clearCache(?string $class = null): void
+    {
+        $apcu = extension_loaded('apcu') && apcu_enabled();
+
         if ($class !== null) {
+            if ($apcu) {
+                // Limpa todas as entradas APCu daquela classe
+                foreach (array_keys(self::$cache[$class] ?? []) as $key) {
+                    apcu_delete('psf_meta_' . md5($class) . '_' . $key);
+                }
+            }
             unset(self::$cache[$class]);
         } else {
+            if ($apcu) {
+                foreach (self::$cache as $cls => $keys) {
+                    foreach (array_keys($keys) as $key) {
+                        apcu_delete('psf_meta_' . md5($cls) . '_' . $key);
+                    }
+                }
+            }
             self::$cache = [];
         }
     }

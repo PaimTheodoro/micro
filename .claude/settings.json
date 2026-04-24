@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php -r ' *)",
+      "Bash(php -l src/model/ModelQuery.php)",
+      "Bash(php -l src/http/Request.php)",
+      "Bash(php -l phinx.php)",
+      "Bash(php -l src/model/ModelTrait.php)",
+      "Bash(php -l src/model/ControllerBase.php)",
+      "Bash(php -l src/http/Http.php)",
+      "Bash(php -l src/http/Router.php)",
+      "Bash(php -l src/database/Delete.php)",
+      "Bash(composer require *)",
+      "Bash(./vendor/bin/pest --colors=always)"
+    ]
+  }
+}

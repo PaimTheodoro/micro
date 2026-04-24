@@ -30,19 +30,33 @@ class JWT{
     }
  
     public static function decode(string $token, bool $valid){
-        $token = explode('.', $token);
-        $header = static::base64urlDescode($token[0]);
-        $payload = static::base64urlDescode($token[1]);
- 
-        $signature = static::base64urlDescode($token[2]);
- 
-        $header_payload = $token[0] . '.' . $token[1];
- 
+        $parts = explode('.', $token);
+        if(count($parts) !== 3){
+            return false;
+        }
+
+        [$headerB64, $payloadB64, $signatureB64] = $parts;
+
         if($valid){
-            if(hash_hmac('sha256', $header_payload, \PSF::getConfig()->jwt['secret'], true) !== $signature){
+            $expectedSig = hash_hmac('sha256', $headerB64 . '.' . $payloadB64, \PSF::getConfig()->jwt['secret'], true);
+            // hash_equals previne timing attacks por comparação em tempo constante
+            if(!hash_equals($expectedSig, static::base64urlDescode($signatureB64))){
                 return false;
             }
         }
-        return json_decode($payload, true);
+
+        $payload = json_decode(static::base64urlDescode($payloadB64), true);
+
+        if($valid && is_array($payload)){
+            $now = time();
+            if(isset($payload['exp']) && $now > $payload['exp']){
+                return false;
+            }
+            if(isset($payload['nbf']) && $now < $payload['nbf']){
+                return false;
+            }
+        }
+
+        return $payload;
     }
 }

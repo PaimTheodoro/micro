@@ -3,6 +3,7 @@
 namespace Psf\Database\Command;
 
 use Phinx\Console\Command\AbstractCommand;
+use Phinx\Db\Table\Column;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -12,50 +13,41 @@ class ModelGenerator extends AbstractCommand
 {
     protected static $defaultName = 'make:model-from-table';
 
-    protected function configure()
+    protected function configure(): void
     {
         $this
-            ->setDescription('Gera um modelo PHP a partir de uma tabela do banco de dados')
+            ->setDescription('Gera um modelo PSF (com PHP 8 Attributes) a partir de uma tabela do banco de dados')
             ->addArgument('table', InputArgument::REQUIRED, 'Nome da tabela no banco de dados')
             ->addArgument('class', InputArgument::REQUIRED, 'Nome completo da classe do modelo (ex: App\\Models\\User\\User)')
-            ->setHelp('Este comando gera um modelo PHP baseado na estrutura de uma tabela existente no banco de dados.');
+            ->setHelp('Gera um modelo PHP usando #[Table], #[Column], #[PrimaryKey] e outros Attributes do PSF.');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
+        $io        = new SymfonyStyle($input, $output);
         $tableName = $input->getArgument('table');
         $className = $input->getArgument('class');
 
         try {
-            // Obtém a configuração do banco de dados
-            $config = $this->getConfig();
-            $environment = $config->getEnvironment($config->getDefaultEnvironment());
-            
-            // Conecta ao banco de dados
-            $adapter = $environment->getAdapter();
-            
-            // Obtém a estrutura da tabela
+            $adapter = $this->getConfig()
+                            ->getEnvironment($this->getConfig()->getDefaultEnvironment())
+                            ->getAdapter();
+
             $columns = $adapter->getColumns($tableName);
-            
+
             if (empty($columns)) {
                 $io->error("Tabela '{$tableName}' não encontrada no banco de dados.");
                 return 1;
             }
 
-            // Gera o código do modelo
             $modelCode = $this->generateModelCode($tableName, $className, $columns);
-            
-            // Determina o caminho do arquivo
-            $filePath = $this->getModelFilePath($className);
-            
-            // Cria o diretório se não existir
+            $filePath  = $this->getModelFilePath($className);
+
             $directory = dirname($filePath);
             if (!is_dir($directory)) {
                 mkdir($directory, 0755, true);
             }
-            
-            // Escreve o arquivo
+
             if (file_put_contents($filePath, $modelCode) === false) {
                 $io->error("Erro ao escrever o arquivo: {$filePath}");
                 return 1;
@@ -70,122 +62,156 @@ class ModelGenerator extends AbstractCommand
         }
     }
 
-    private function generateModelCode($tableName, $className, $columns)
+    /**
+     * Gera o código PHP do modelo usando PHP 8 Attributes do PSF.
+     * Cada coluna vira uma propriedade com #[Column], #[Type], e atributos especiais
+     * quando detectados (PrimaryKey, ColumnCreatedDate, ColumnUpdatedDate, Nullable).
+     *
+     * @param Column[] $columns
+     */
+    public function generateModelCode(string $tableName, string $className, array $columns): string
     {
         $namespace = $this->getNamespaceFromClassName($className);
-        $shortClassName = $this->getShortClassName($className);
-        
-        $attributes = [];
-        $types = [];
-        
+        $shortName = $this->getShortClassName($className);
+
+        $usedAttributes = ['Table', 'Column', 'PrimaryKey', 'Type'];
+        $properties     = [];
+
         foreach ($columns as $column) {
-            $name = $column['name'];
-            $type = $this->mapDatabaseTypeToPhpType($column['type']);
-            $nullable = $column['null'] ? '?' : '';
-            
-            $attributes[] = "    public {$nullable}{$type} \${$name};";
-            $types[] = "        '{$name}' => '{$type}',";
+            $colName  = $column->getName();
+            $propName = $this->snakeToCamel($colName);
+            $phpType  = $this->mapColumnToPhpType($column);
+            $sqlType  = $this->mapColumnToSqlType($column);
+            $lcName   = strtolower($colName);
+
+            $lines = [];
+
+            if ($column->isIdentity()) {
+                $lines[] = '    #[PrimaryKey]';
+            }
+
+            $lines[] = "    #[Column('{$colName}')]";
+            $lines[] = "    #[Type('{$sqlType}')]";
+
+            if (str_contains($lcName, 'created')) {
+                $lines[] = '    #[ColumnCreatedDate]';
+                $usedAttributes[] = 'ColumnCreatedDate';
+            } elseif (str_contains($lcName, 'updated') || str_contains($lcName, 'modified')) {
+                $lines[] = '    #[ColumnUpdatedDate]';
+                $usedAttributes[] = 'ColumnUpdatedDate';
+            }
+
+            if (!$column->isNull()) {
+                $lines[] = '    #[Nullable(false)]';
+                $usedAttributes[] = 'Nullable';
+            }
+
+            $lines[] = "    public ?{$phpType} \${$propName} = null;";
+            $properties[] = implode("\n", $lines);
         }
 
-        $attributesCode = implode("\n", $attributes);
-        $typesCode = implode("\n", $types);
+        $uses = implode(', ', array_unique($usedAttributes));
+        $body = implode("\n\n", $properties);
 
-        return "<?php
+        return <<<PHP
+        <?php
 
-namespace {$namespace};
+        namespace {$namespace};
 
-use Psf\\Model\\Model;
+        use Psf\Model\Model;
+        use Psf\Model\Attributes\{{$uses}};
 
-/**
- * Modelo gerado automaticamente para a tabela '{$tableName}'
- * 
- * @property int \$id
-" . $this->generatePropertyComments($columns) . "
- */
-class {$shortClassName} extends Model
-{
-    protected \$table = '{$tableName}';
-    
-    protected \$fillable = [
-" . $this->generateFillableArray($columns) . "
-    ];
-    
-    protected \$casts = [
-" . $typesCode . "
-    ];
-    
-{$attributesCode}
-}";
+        #[Table('{$tableName}')]
+        class {$shortName} extends Model
+        {
+        {$body}
+        }
+        PHP;
     }
 
-    private function getNamespaceFromClassName($className)
+    /** Converte snake_case para camelCase. Ex.: created_at → createdAt */
+    public function snakeToCamel(string $snake): string
+    {
+        return lcfirst(str_replace('_', '', ucwords($snake, '_')));
+    }
+
+    /** Mapeia o tipo Phinx de uma coluna para o tipo PHP equivalente. */
+    public function mapColumnToPhpType(Column $column): string
+    {
+        $type = $column->getType();
+
+        if ($type === 'boolean') return 'bool';
+        if ($type === 'tinyinteger' && $column->getLimit() === 1) return 'bool';
+        if (in_array($type, ['integer', 'biginteger', 'tinyinteger', 'smallinteger'])) return 'int';
+        if (in_array($type, ['float', 'decimal', 'double'])) return 'float';
+
+        return 'string';
+    }
+
+    /**
+     * Gera a string de tipo SQL para uso no #[Type(...)].
+     * Inclui tamanho, UNSIGNED, NULL/NOT NULL e AUTO_INCREMENT quando aplicável.
+     */
+    public function mapColumnToSqlType(Column $column): string
+    {
+        static $typeMap = [
+            'string'      => 'VARCHAR',
+            'integer'     => 'INT',
+            'biginteger'  => 'BIGINT',
+            'tinyinteger' => 'TINYINT',
+            'smallinteger'=> 'SMALLINT',
+            'boolean'     => 'TINYINT(1)',
+            'float'       => 'FLOAT',
+            'decimal'     => 'DECIMAL',
+            'double'      => 'DOUBLE',
+            'date'        => 'DATE',
+            'datetime'    => 'DATETIME',
+            'timestamp'   => 'TIMESTAMP',
+            'time'        => 'TIME',
+            'text'        => 'TEXT',
+            'uuid'        => 'VARCHAR(36)',
+            'json'        => 'JSON',
+            'blob'        => 'BLOB',
+        ];
+
+        $sqlBase = $typeMap[$column->getType()] ?? strtoupper($column->getType());
+
+        $noLimit = ['boolean', 'text', 'blob', 'json', 'date', 'datetime', 'timestamp', 'time'];
+        if (!in_array($column->getType(), $noLimit) && $column->getLimit() !== null && !str_contains($sqlBase, '(')) {
+            $sqlBase .= '(' . $column->getLimit() . ')';
+        }
+
+        if (!$column->isSigned() && in_array($column->getType(), ['integer', 'biginteger', 'tinyinteger', 'smallinteger'])) {
+            $sqlBase .= ' UNSIGNED';
+        }
+
+        $sqlBase .= $column->isNull() ? ' NULL' : ' NOT NULL';
+
+        if ($column->isIdentity()) {
+            $sqlBase .= ' AUTO_INCREMENT';
+        }
+
+        return $sqlBase;
+    }
+
+    private function getNamespaceFromClassName(string $className): string
     {
         $parts = explode('\\', $className);
-        array_pop($parts); // Remove o nome da classe
+        array_pop($parts);
         return implode('\\', $parts);
     }
 
-    private function getShortClassName($className)
+    private function getShortClassName(string $className): string
     {
-        $parts = explode('\\', $className);
-        return end($parts);
+        return basename(str_replace('\\', '/', $className));
     }
 
-    private function mapDatabaseTypeToPhpType($databaseType)
+    private function getModelFilePath(string $className): string
     {
-        $type = strtolower($databaseType);
-        
-        if (strpos($type, 'int') !== false) {
-            return 'int';
-        } elseif (strpos($type, 'decimal') !== false || strpos($type, 'float') !== false || strpos($type, 'double') !== false) {
-            return 'float';
-        } elseif (strpos($type, 'bool') !== false) {
-            return 'bool';
-        } elseif (strpos($type, 'date') !== false || strpos($type, 'time') !== false) {
-            return 'string';
-        } else {
-            return 'string';
-        }
-    }
-
-    private function generatePropertyComments($columns)
-    {
-        $comments = [];
-        foreach ($columns as $column) {
-            $name = $column['name'];
-            $type = $this->mapDatabaseTypeToPhpType($column['type']);
-            $nullable = $column['null'] ? '|null' : '';
-            $comments[] = " * @property {$type}{$nullable} \${$name}";
-        }
-        return implode("\n", $comments);
-    }
-
-    private function generateFillableArray($columns)
-    {
-        $fillable = [];
-        foreach ($columns as $column) {
-            $name = $column['name'];
-            if ($name !== 'id') { // Exclui o ID do fillable
-                $fillable[] = "        '{$name}',";
-            }
-        }
-        return implode("\n", $fillable);
-    }
-
-    private function getModelFilePath($className)
-    {
-        // Converte o namespace em caminho de arquivo
         $path = str_replace('\\', '/', $className);
-        
-        // Remove o prefixo 'App/' e adiciona o caminho correto
-        if (strpos($path, 'App/') === 0) {
-            $path = substr($path, 4); // Remove 'App/'
+        if (str_starts_with($path, 'App/')) {
+            $path = substr($path, 4);
         }
-        
-        // Adiciona a extensão .php
-        $path .= '.php';
-        
-        // Retorna o caminho completo a partir da raiz do projeto
-        return ROOT . '/app/models/' . $path;
+        return ROOT . '/app/models/' . $path . '.php';
     }
-} 
+}

@@ -2,7 +2,7 @@
 
 namespace Psf\Database;
 
-use \Psf\Enumerators\{DBDriver};
+use Psf\Database\Dialect\DialectFactory;
 
 class Connect{
     static $connect = null;
@@ -12,43 +12,30 @@ class Connect{
         $configDb = \PSF::getConfig()->db;
 
         if(isset($configDb[$database]) && !empty($configDb[$database])){
-            $driver = !empty($configDb[$database]['driver']) ? $configDb[$database]['driver'] : DBDriver::MySQL;
-
-            $hostname   = $configDb[$database]['hostname'];
-            $username   = $configDb[$database]['username'];
-            $password   = $configDb[$database]['password'];
-            $base       = $configDb[$database]['database'];
-            $port       = $configDb[$database]['port'] ?? 3306;
-            $extras     = $configDb[$database]['extras'] ?? []; 
+            $username = $configDb[$database]['username'];
+            $password = $configDb[$database]['password'];
+            $extras   = $configDb[$database]['extras'] ?? [];
 
             try{
                 if(empty(self::$connect[$database])){
-                    if($driver == DBDriver::MySQL){
-                        self::$connect[$database] = new \PDO(
-                            'mysql:host=' . $hostname .';dbname=' . $base . ';port=' . $port . ';charset=utf8;', 
-                            $username, 
-                            $password, $extras
-                        );
-                    }
-
-                    if($driver == DBDriver::SQLServer){
-                        self::$connect[$database] = new \PDO(
-                            'sqlsrv:Server=' . $configDb[$database]['hostname'] . ';Database=' . $configDb[$database]['database'], 
-                            $configDb[$database]['username'], 
-                            $configDb[$database]['password'], $extras
-                        );
-                    }                    
+                    $dialect = DialectFactory::fromConfig($configDb[$database]);
+                    self::$connect[$database] = new \PDO(
+                        $dialect->buildDsn($configDb[$database]),
+                        $username,
+                        $password,
+                        $extras
+                    );
                 }
             }catch(\PDOException $e){
                 explodeException($e);
             }
-            
+
             self::$connect[$database]->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
             self::listTables($database);
             return self::$connect[$database];
         }else{
             throw new \Exception("Database not found");
-        }        
+        }
     }
 
     public static function getConnection($database = 'default'){
@@ -73,19 +60,10 @@ class Connect{
         }
 
         try{
-            $driver = !empty($configDb['driver']) ? $configDb['driver'] : DBDriver::MySQL;
+            $dialect   = DialectFactory::fromConfig($configDb);
+            $statement = self::$connect[$database]->prepare($dialect->listTablesQuery());
 
-            if($driver == DBDriver::MySQL){
-                $statement = self::$connect[$database]->prepare("SHOW TABLES");
-            }
-
-            if($driver == DBDriver::SQLServer){
-                $statement = self::$connect[$database]->prepare("SELECT TABLE_NAME
-                FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_TYPE = 'BASE TABLE'");
-            }  
-
-            if(isset($statement) && $statement instanceof \PDOStatement){
+            if($statement instanceof \PDOStatement){
                 $statement->execute();
                 $tables = $statement->fetchAll(\PDO::FETCH_NUM);
 
@@ -124,21 +102,9 @@ class Connect{
         }
 
         try{
-            $driver = !empty($configDb['driver']) ? $configDb['driver'] : DBDriver::MySQL;
-
-            if($driver == DBDriver::MySQL){
-                $statement = self::$connect[$database]->prepare("SHOW COLUMNS FROM `" . $table . "`");
-            }
-
-            if($driver == DBDriver::SQLServer){
-                $statement = self::$connect[$database]->prepare("SELECT
-                COLUMNINFO.COLUMN_NAME AS Field,
-                COLUMNINFO.DATA_TYPE AS Type,
-                COLUMNINFO.IS_NULLABLE AS [Null],
-                (SELECT 'PRI' FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE as COLUMNUSAGE WHERE COLUMNUSAGE.COLUMN_NAME = COLUMNINFO.COLUMN_NAME AND OBJECTPROPERTY(OBJECT_ID(CONSTRAINT_SCHEMA + '.' + CONSTRAINT_NAME), 'IsPrimaryKey') = 1 AND COLUMNUSAGE.TABLE_NAME = '{$table}') as [Key] FROM INFORMATION_SCHEMA.COLUMNS as COLUMNINFO WHERE COLUMNINFO.TABLE_NAME = '{$table}'");
-            }  
-           
-            $statement->execute();
+            $dialect   = DialectFactory::fromConfig($configDb);
+            $statement = self::$connect[$database]->prepare($dialect->columnsQuery($table));
+            $statement->execute($dialect->columnsQueryParams($table));
             $coluns = $statement->fetchAll(\PDO::FETCH_ASSOC);
 
             foreach($coluns as $item){ 

@@ -3,6 +3,7 @@
 namespace Psf\Http;
 
 use \Psf\Http\{StatusCode, Http, ApiDocsGenerator, RouteCacheManager};
+use \Psf\Enumerators\HttpStatusCode;
 
 class Router{
 	private array 	$routes 	= [];
@@ -62,7 +63,7 @@ class Router{
 						] : [
 							'message' => $response[0]
 						],
-						'httpCode' 	=> $response[2] ?? StatusCode::OK,
+						'httpCode' 	=> $response[2] ?? HttpStatusCode::OK->value,
 					]);
 				}
 			}
@@ -74,7 +75,7 @@ class Router{
         $matchedRoute = $this->findMatchingRoute($urlFind);
 
         if(empty($matchedRoute)){
-            throw new \Exception("Não foi possível encontrar a rota correspondente.", StatusCode::NOT_FOUND);
+            throw new \Exception("Não foi possível encontrar a rota correspondente.", HttpStatusCode::NOT_FOUND->value);
         }
 
         $this->executeMiddlewares($matchedRoute, $urlFind);
@@ -106,7 +107,7 @@ class Router{
             ){
                 $routePath = $route['attributes']['arguments']['path'];
                 // Verifica se a rota não tem parâmetros dinâmicos
-                if(strpos($routePath, '{') === false && $this->clearUrl($routePath) === $url){
+                if(!str_contains($routePath, '{') && $this->clearUrl($routePath) === $url){
                     return $route;
                 }
             }
@@ -179,12 +180,12 @@ class Router{
     private function runAuthMiddleware(array $route, string $url): void{
         $verifyAuth = \PSF::getConfig()->settings['verifyauth'] ?? false;
         if(empty($verifyAuth)){
-            throw new \Exception("Middleware de autenticação não configurado.", StatusCode::UNAUTHORIZED);
+            throw new \Exception("Middleware de autenticação não configurado.", HttpStatusCode::UNAUTHORIZED->value);
         }
 
         $objVerify = new $verifyAuth[0]();
         if(!is_callable([$objVerify, $verifyAuth[1]])){
-            throw new \Exception("Método de autenticação não é chamável.", StatusCode::INTERNAL_SERVER_ERROR);
+            throw new \Exception("Método de autenticação não é chamável.", HttpStatusCode::INTERNAL_SERVER_ERROR->value);
         }
 
         $doValid = call_user_func([$objVerify, $verifyAuth[1]]);
@@ -192,9 +193,9 @@ class Router{
             self::$auth = $doValid;
         } else {
             $responseData = is_bool($doValid) ? null : (is_array($doValid) ? $doValid : ['msg' => $doValid]);
-            $this->saveLoggin($url, $route, ["Erro ao validar a autenticação", $responseData, StatusCode::UNAUTHORIZED]);
-            Http::response("Erro ao validar a autenticação", $responseData, StatusCode::UNAUTHORIZED);
-            throw new \Exception("Autenticação falhou.", StatusCode::UNAUTHORIZED);
+            $this->saveLoggin($url, $route, ["Erro ao validar a autenticação", $responseData, HttpStatusCode::UNAUTHORIZED->value]);
+            Http::response("Erro ao validar a autenticação", $responseData, HttpStatusCode::UNAUTHORIZED->value);
+            throw new \Exception("Autenticação falhou.", HttpStatusCode::UNAUTHORIZED->value);
         }
     }
     
@@ -226,7 +227,7 @@ class Router{
         $methodName = $route['name'];
 
         if(!is_callable([new $className(), $methodName])){
-            throw new \Exception("Controller ou método não encontrado.", StatusCode::NOT_FOUND);
+            throw new \Exception("Controller ou método não encontrado.", HttpStatusCode::NOT_FOUND->value);
         }
         
         try{
@@ -235,31 +236,12 @@ class Router{
             return $response;
         } catch (\Exception $e){
             // Opcional: Logar o erro $e
-            throw new \Exception("Erro ao executar a rota.", StatusCode::INTERNAL_SERVER_ERROR, $e);
+            throw new \Exception("Erro ao executar a rota.", HttpStatusCode::INTERNAL_SERVER_ERROR->value, $e);
         }
     }
 
-	private function getBody(){
-		$data = [];
-
-		$contentType = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : (isset($_SERVER['HTTP_CONTENT_TYPE']) ? $_SERVER['HTTP_CONTENT_TYPE'] : null);
-
-		if (!empty($content)) {
-		    if ($contentType === "application/json") {
-		        $requestData = json_decode(file_get_contents('php://input'), true);
-		        $data = array_merge($data ?? [], $requestData ?? []);
-		    } else {
-		        $data = array_merge($data ?? [], $_POST ?? []);
-		    }
-		} else {
-		    $requestData = json_decode(file_get_contents('php://input'), true);
-		    $data = array_merge($data ?? [], $requestData ?? []);
-		}
-
-		$data = array_merge($data ?? [], $_GET);
-		unset($data['_url']);
-
-		return $data;
+	private function getBody(): array{
+		return RequestParser::parseBody();
 	}
 
 	public function handle(){

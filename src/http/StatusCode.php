@@ -2,6 +2,9 @@
 
 namespace Psf\Http;
 
+/**
+ * @deprecated Use \Psf\Enumerators\HttpStatusCode enum instead.
+ */
 class StatusCode{
 	public const OK = 200;
 	public const CREATED = 201;

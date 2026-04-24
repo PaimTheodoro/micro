@@ -66,18 +66,25 @@ class Request{
 		}
 
 		$execute = curl_exec($curl);
-		curl_close($curl);
 
-		if(!$execute){  
-    		$this->error = "Erro (código " . curl_errno($curl) . "): " . curl_error($curl);
-    		return FALSE;
+		if($execute === false){
+			$errno = curl_errno($curl);
+			$error = curl_error($curl);
+			curl_close($curl);
+			$this->error = "Erro (código " . $errno . "): " . $error;
+			return FALSE;
 		}else{
+			$code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+			$contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
+			$timing = curl_getinfo($curl, CURLINFO_TOTAL_TIME);
+			curl_close($curl);
+
 			$response = new \stdClass;
-			$response->code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-			$response->contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
-			$response->timing = curl_getinfo($curl, CURLINFO_TOTAL_TIME);
+			$response->code = $code;
+			$response->contentType = $contentType;
+			$response->timing = $timing;
 	
-			if(strpos($response->contentType, "application/json") === 0){
+			if(str_starts_with($response->contentType, "application/json")){
 				$encoding = mb_detect_encoding($execute, 'UTF-8', true);
 
 				if ($encoding !== 'UTF-8') {

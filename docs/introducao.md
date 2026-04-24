@@ -6,12 +6,14 @@ Este micro framework PHP foi criado para facilitar o desenvolvimento de APIs e a
 
 - `src/` - Código-fonte principal
     - `database/` - Operações de banco de dados (CRUD, comandos)
-    - `enum/` - Enums úteis para HTTP, banco, etc.
+    - `database/Command/` - CLI Phinx: ModelGenerator, TableAnalyzer, ModelAwareMigration
+    - `database/Dialect/` - Dialetos SQL por banco (MySQL, PostgreSQL, SQL Server)
+    - `enum/` - Enums: DBDriver, HTTPMethod, HttpStatusCode, etc.
     - `helpers/` - Funções utilitárias
     - `http/` - Roteamento, requisições e respostas HTTP
-    - `model/` - Models, traits e atributos
+    - `model/` - Models, traits, atributos, QueryBuilder, hidratação
     - `utils/` - Utilitários diversos (cache, email, JWT, etc)
-- `db/` - Scripts e comandos para banco de dados
+- `tests/` - Suite de testes (Pest v3)
 - `bin/` - Scripts executáveis
 - `vendor/` - Dependências Composer
 
@@ -19,3 +21,7 @@ Este micro framework PHP foi criado para facilitar o desenvolvimento de APIs e a
 - PSR-4 autoloading
 - Código limpo e componentizado
 - Foco em produtividade e clareza 
+## Guias
+- `docs/guia.md` - **Guia prático** — instalação, config, models, rotas, migrations e testes
+- `docs/query-builder.md` - Guia completo de consultas com o ModelQuery
+- `docs/melhorias.md` - Documentação de todas as melhorias aplicadas (v0.0.10 → v0.4.0)
