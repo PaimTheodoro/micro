@@ -3,7 +3,7 @@
     "description": "Framework PHP para desenvolvimento de APIs",
     "type": "library",
     "license": "MIT",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "authors": [
         {
             "name": "Theodoro Paim",
