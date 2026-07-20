@@ -70,14 +70,14 @@ class Request{
 		if($execute === false){
 			$errno = curl_errno($curl);
 			$error = curl_error($curl);
-			curl_close($curl);
+			// curl_close($curl);
 			$this->error = "Erro (código " . $errno . "): " . $error;
 			return FALSE;
 		}else{
 			$code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
 			$contentType = curl_getinfo($curl, CURLINFO_CONTENT_TYPE);
 			$timing = curl_getinfo($curl, CURLINFO_TOTAL_TIME);
-			curl_close($curl);
+			// curl_close($curl);
 
 			$response = new \stdClass;
 			$response->code = $code;

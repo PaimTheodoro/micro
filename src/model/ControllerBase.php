@@ -44,4 +44,18 @@ class ControllerBase{
 	public function commitTransaction($database = 'default'){
 		Connect::commitTransaction($database);
 	}
+
+	public function runServiceTransaction(callable $action, $database = 'default'): array {
+		$this->initTransaction($database);
+
+		$result = $action();
+
+		if(isset($result[2]) && $result[2] >= 400){
+			$this->rollBackTransaction($database);
+		}else{
+			$this->commitTransaction($database);
+		}
+
+		return $result;
+	}
 }

@@ -2,9 +2,12 @@
 
 namespace Psf\Http;
 
+use Attribute;
 use \Psf\Http\{StatusCode, Http, ApiDocsGenerator, RouteCacheManager};
 use \Psf\Enumerators\HttpStatusCode;
+use \Psf\Helper\CheckFields;
 
+#[Attribute]
 class Router{
 	private array 	$routes 	= [];
 	private ?string $method 	= null;
@@ -229,9 +232,18 @@ class Router{
         if(!is_callable([new $className(), $methodName])){
             throw new \Exception("Controller ou método não encontrado.", HttpStatusCode::NOT_FOUND->value);
         }
-        
+
         try{
-            $response = call_user_func_array([new $className(), $methodName], $this->fields);
+            $controller = new $className();
+
+            // Se a rota declarou docs.fields, valida os campos `required` antes de
+            // executar o método — fonte única pra doc e validação, sem chamada manual.
+            $docsFields = $route['attributes']['arguments']['docs']['fields'] ?? null;
+            if(!empty($docsFields)){
+                CheckFields::checkFromDocsFields($docsFields, $controller->data);
+            }
+
+            $response = call_user_func_array([$controller, $methodName], $this->fields);
             $this->saveLoggin($_GET['_url'], $route, $response);
             return $response;
         } catch (\Exception $e){
@@ -245,13 +257,20 @@ class Router{
 	}
 
 	public function handle(){
-		if(isset(\PSF::getConfig()->settings['docsapi'])){
-			$docsApiUrl = \PSF::getConfig()->settings['docsapi'];
+		$docsConfig = \PSF::getConfig()->settings['docsapi'] ?? null;
 
+		if($docsConfig){
+			// Aceita o formato antigo (string = só o path, sem autenticação) e o novo
+			// (array com 'path', e opcionalmente 'username'/'password' pra exigir Basic Auth).
+			$docsPath = is_array($docsConfig) ? ($docsConfig['path'] ?? null) : $docsConfig;
 
-			if(self::clearUrl($_GET['_url']) === $docsApiUrl){
+			if($docsPath && self::clearUrl($_GET['_url']) === $docsPath){
+				if(is_array($docsConfig) && !empty($docsConfig['username'])){
+					Http::requireBasicAuth($docsConfig['username'], $docsConfig['password'] ?? '', 'Documentação da API');
+				}
+
 				$generator = new ApiDocsGenerator($this->routes);
-                $generator->generate();
+				$generator->generate();
 				die;
 			}
 		}

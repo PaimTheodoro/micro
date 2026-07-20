@@ -147,4 +147,32 @@ class CheckFields{
 			return true;
 		}
 	}
+
+	/**
+	 * Valida os campos marcados como `required` numa lista no formato de
+	 * #[Router(docs: ['fields' => [...]])]. Ignora location 'urlcomponent'
+	 * (já garantido pelo casamento de rota em Router::findMatchingRoute()).
+	 */
+	public static function checkFromDocsFields(array $fields, array $data): void{
+		$input = [];
+
+		foreach($fields as $field){
+			if(empty($field['required']) || ($field['location'] ?? null) === 'urlcomponent'){
+				continue;
+			}
+
+			$entry = ['content' => $data[$field['name']] ?? null];
+			foreach(['specialCheck', 'accept', 'caseSensitive', 'isBoolean', 'fields'] as $key){
+				if(isset($field[$key])){
+					$entry[$key] = $field[$key];
+				}
+			}
+
+			$input[$field['name']] = $entry;
+		}
+
+		if(!empty($input)){
+			self::check($input);
+		}
+	}
 }

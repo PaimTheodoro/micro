@@ -2,6 +2,8 @@
 
 namespace Psf\Http;
 
+use Psf\Enumerators\HttpStatusCode;
+
 class Http{
 
 	/**
@@ -47,20 +49,13 @@ class Http{
 			$arrReturn["response"] = json_decode($doRequest, true);
 		}	
 
-		curl_close($curl);
+		// curl_close($curl);
 
 		return $arrReturn;
 	}
 
 	public static function response($message = "", $data = [], $status = 200, $headers = []){
-		header('Content-Type: application/json');
-		http_response_code($status);
-		
-		if(!empty($headers)){
-			foreach($headers as $header => $value){
-				header($header . ": " . $value);
-			}
-		};
+		$statusCode = is_numeric($status) ? $status : ($status instanceof HttpStatusCode ? $status->value : 200);
 
 		$response = [];
 
@@ -72,8 +67,45 @@ class Http{
 			$response['data'] = $data;
 		}
 
+		if(defined('PSF_TESTING') && PSF_TESTING){
+			throw new HttpResponseException($response, $statusCode);
+		}
+
+		header('Content-Type: application/json');
+		http_response_code($statusCode);
+
+		if(!empty($headers)){
+			foreach($headers as $header => $value){
+				header($header . ": " . $value);
+			}
+		};
+
 		echo json_encode($response);
 		exit;
+	}
+
+	/**
+	 * Exige autenticação HTTP Basic (prompt nativo do navegador). Se as credenciais
+	 * não baterem, responde 401 + WWW-Authenticate e encerra a execução.
+	 */
+	public static function requireBasicAuth(string $username, string $password, string $realm = 'Restricted'): void{
+		$authUser = $_SERVER['PHP_AUTH_USER'] ?? null;
+		$authPass = $_SERVER['PHP_AUTH_PW'] ?? null;
+
+		if($authUser === null){
+			$header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+			if($header && str_starts_with($header, 'Basic ')){
+				$decoded = base64_decode(substr($header, 6));
+				[$authUser, $authPass] = array_pad(explode(':', $decoded, 2), 2, null);
+			}
+		}
+
+		if($authUser !== $username || $authPass !== $password){
+			header('WWW-Authenticate: Basic realm="' . $realm . '"');
+			header('HTTP/1.1 401 Unauthorized');
+			echo 'Acesso não autorizado.';
+			exit;
+		}
 	}
 
 }

@@ -9,13 +9,43 @@
     <link href="https://cdn.porglin.com/css/fonts/icons.min.css" rel="stylesheet" type="text/css">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet" type="text/css">
     <link href="" rel="shortcut icon" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/json-formatter-js@2.3.4/dist/json-formatter.css" rel="stylesheet" type="text/css">
     <style>
-        .headerDocs{ background: #ddd; height: 72.5px; }
+        input, textarea, select, button{ outline: none; }
+        .headerDocs{ background: #ddd; height: 72.5px; display: flex; align-items: center; justify-content: space-between; padding: 0px 20px; }
+        .headerDocs .globalAuthBar{ display: flex; gap: 8px; }
+        .headerDocs .globalAuthBar input{ height: 36px; border-radius: 5px; border: 1px solid #ccc; padding: 0px 10px; font-size: 0.8rem; width: 220px; }
+        .headerDocs .globalAuthBar input::placeholder{ color: #999; }
         .contentFinal{ height: calc(100vh - 72.5px); overflow-y: auto; }
         .sidebar{ background: #eee; width: 400px; height: calc(100vh - 72.5px); }
-        .sidebar .searchBar{ height: 75px; }
+        .sidebar .searchBar{ height: 75px; padding: 15px; }
+        .sidebar .searchBar input{ width: 100%; height: 100%; border-radius: 5px; border: 1px solid #ddd; padding: 0px 12px; font-size: 0.9rem; }
         .sidebar .contentRequestList{ height: calc(100vh - 147.5px); overflow-y: auto; }
-        .requestPlayground{ background: #2B2D34; width: 35vw; border-bottom: 2px solid #3A3D47; }
+        .sidebar .navTag{ padding: 10px 15px 5px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #999; }
+        .sidebar .navItem{ display: block; padding: 8px 20px; font-size: 0.85rem; color: #444; text-decoration: none; border-left: 3px solid transparent; }
+        .sidebar .navItem:hover, .sidebar .navItem.active{ background: #ddd; border-left-color: #315ebc; color: #315ebc; }
+        .sidebar .navItem .navMethod{ font-weight: 700; font-size: 0.7rem; margin-right: 6px; text-transform: uppercase; }
+        .requestPlayground{ background: #2B2D34; border-bottom: 2px solid #3A3D47; padding: 15px; display: flex; flex-direction: column; height: 100%; }
+        .requestPlayground .playgroundForm{ display: flex; flex-direction: column; flex: 1 1 50%; min-height: 0px; }
+        .requestPlayground .playgroundFields{ display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0px; }
+        .requestPlayground .pgLabel{ color: #9aa0ab; font-size: 0.7rem; text-transform: uppercase; margin: 8px 0px 3px; flex: 0 0 auto; }
+        .requestPlayground input, .requestPlayground textarea{ width: 100%; border-radius: 4px; border: 0; padding: 6px 8px; font-size: 0.8rem; margin-bottom: 6px; }
+        .requestPlayground input{ flex: 0 0 auto; }
+        .requestPlayground textarea{ flex: 1 1 auto; min-height: 0px; font-family: monospace; resize: none; overflow-y: auto; }
+        .requestPlayground .pgActions{ display: flex; gap: 8px; flex: 0 0 auto; margin-top: 6px; }
+        .requestPlayground .pgActions button{ flex: 1 1 50%; width: 50%; margin-bottom: 0px; }
+        .requestPlayground .sendBtn{ background: #35b062; color: #fff; border: 0; border-radius: 4px; padding: 8px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+        .requestPlayground .sendBtn:hover{ background: #2c9851; }
+        .requestPlayground .copyCurlBtn{ background: #3a3d47; color: #c9d1d9; border: 1px solid #4a4d57; border-radius: 4px; padding: 8px 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+        .requestPlayground .copyCurlBtn:hover{ background: #454854; }
+        .requestPlayground .responseBox{ background: #1c1e24; color: #c9d1d9; font-size: 0.75rem; margin-top: 10px; padding: 8px; border-radius: 4px; flex: 1 1 50%; min-height: 0px; overflow: auto; }
+        .requestPlayground .responseBox pre{ white-space: pre-wrap; color: #c9d1d9; margin: 0px; }
+        .requestPlayground .responseStatus{ font-weight: 700; font-size: 0.75rem; margin-bottom: 6px; }
+        .requestPlayground .responseStatus.ok{ color: #35b062; }
+        .requestPlayground .responseStatus.error{ color: #ff5a5a; }
+        .itemRequest .requestRow{ display: flex; align-items: stretch; flex-wrap: nowrap; }
+        .itemRequest .requestRow > .docReal{ flex: 1 1 auto; min-width: 0px; }
+        .itemRequest .requestRow > .requestPlayground{ flex: 0 0 35vw; }
         .itemRequest .docReal{ border-bottom: 2px dashed #ddd; padding-bottom: 30px; }
         .itemRequest .docReal .name{ font-weight: 700; padding: 0px; margin-left: 30px; margin-top: 20px; font-size: 1.2rem; color: #444; height: 30px; line-height: 30px; }
         .itemRequest .docReal .methodLabel{ height: 25px; background: #eee; margin-right: 30px; margin-top: 20px; border-radius: 5px; padding: 0px 10px; text-transform: uppercase; font-weight: 700; font-size: 0.8rem; line-height: 25px; color: #FFF; }
@@ -61,15 +91,34 @@
     <noscript><p>JavaScript desabilitado!</p></noscript>
     <div class="container-fluid">
         <div class="row">
-            <div class="col headerDocs">Documentação da API</div>
+            <div class="col headerDocs">
+                <span>Documentação da API</span>
+                <div class="globalAuthBar">
+                    <input type="text" id="globalBaseUrl" placeholder="Base URL">
+                    <input type="text" id="globalToken" placeholder="Token (Bearer)">
+                </div>
+            </div>
         </div>
         <div class="row">
             <div class="col-auto sidebar">
                 <div class="row">
-                    <div class="col searchBar"></div>
+                    <div class="col searchBar">
+                        <input type="text" id="docsSearch" placeholder="Buscar rota...">
+                    </div>
                 </div>
                 <div class="row">
-                    <div class="col contentRequestList"></div>
+                    <div class="col contentRequestList">
+                        <?php foreach ($tags as $tag): ?>
+                            <div class="navTag"><?= htmlspecialchars($tag) ?></div>
+                            <?php foreach ($requests as $request): if ($request['tag'] !== $tag) continue; ?>
+                                <a href="#<?= htmlspecialchars($request['id']) ?>"
+                                   class="navItem"
+                                   data-search="<?= htmlspecialchars(strtolower($request['title'] . ' ' . $request['uri'])) ?>">
+                                    <span class="navMethod"><?= htmlspecialchars($request['method']) ?></span><?= htmlspecialchars($request['title']) ?>
+                                </a>
+                            <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
             <div class="col contentFinal">
@@ -82,10 +131,15 @@
                             $url = str_replace("{" . $match . ":" . $matches[2][$key] . "}", ":" . $match, $request['uri']);
                         }
                     }
+
+                    $fieldsByLocation = ['urlcomponent' => [], 'urlparam' => [], 'body' => []];
+                    foreach ($request['fields'] ?? [] as $field) {
+                        $fieldsByLocation[$field['location']][] = $field;
+                    }
                     ?>
                     <div class="row">
-                        <div class="col itemRequest">
-                            <div class="row">
+                        <div class="col itemRequest" id="<?= htmlspecialchars($request['id']) ?>" data-search="<?= htmlspecialchars(strtolower($request['title'] . ' ' . $request['uri'])) ?>">
+                            <div class="row requestRow">
                                 <div class="col docReal">
                                     <div class="row">
                                         <div class="col name"><?= htmlspecialchars($request['title']) ?></div>
@@ -159,7 +213,7 @@
                                                             include __DIR__ . '/docFieldTemplate.phtml';
                                                             $groupedFields[$field['location']] .= ob_get_clean();
                                                         }
-                                                        
+
                                                         if (!empty($groupedFields['urlcomponent'])) {
                                                             echo '<div class="row"><div class="col headerItem">Componentes da URL</div></div>' . $groupedFields['urlcomponent'];
                                                         }
@@ -176,7 +230,34 @@
                                         </div>
                                     <?php endif; ?>
                                 </div>
-                                <div class="col-auto requestPlayground">Playground</div>
+                                <div class="col-auto requestPlayground">
+                                    <form class="playgroundForm"
+                                          data-method="<?= htmlspecialchars($request['method']) ?>"
+                                          data-uri="<?= htmlspecialchars($request['uri']) ?>"
+                                          data-version="<?= htmlspecialchars($request['version']) ?>"
+                                          data-protected="<?= $request['protected'] ? '1' : '0' ?>">
+                                        <div class="playgroundFields">
+                                            <?php foreach (array_merge($fieldsByLocation['urlcomponent'], $fieldsByLocation['urlparam']) as $field): ?>
+                                                <div class="pgLabel"><?= htmlspecialchars($field['label'] ?? $field['name']) ?> (<?= htmlspecialchars($field['location']) ?>)</div>
+                                                <input type="text" name="<?= htmlspecialchars($field['name']) ?>" data-location="<?= htmlspecialchars($field['location']) ?>" placeholder="<?= htmlspecialchars($field['type']) ?>">
+                                            <?php endforeach; ?>
+
+                                            <?php if (!empty($fieldsByLocation['body'])): ?>
+                                                <div class="pgLabel">Corpo da requisição (JSON)</div>
+                                                <textarea name="__body" data-location="body"><?= htmlspecialchars(json_encode(array_combine(
+                                                    array_column($fieldsByLocation['body'], 'name'),
+                                                    array_map(fn($f) => $f['type'] === 'array' ? [] : '', $fieldsByLocation['body'])
+                                                ), JSON_PRETTY_PRINT)) ?></textarea>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <div class="pgActions">
+                                            <button type="button" class="copyCurlBtn">Copiar cURL</button>
+                                            <button type="submit" class="sendBtn">Enviar</button>
+                                        </div>
+                                    </form>
+                                    <div class="responseBox json-formatter-dark" style="display:none;"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -188,6 +269,7 @@
     <script src="https://cdn.porglin.com/js/bootstrap/bootstrap.min.js"></script>
     <script src="https://cdn.porglin.com/js/sweetalert/sweetalert.min.js"></script>
     <script src="https://cdn.porglin.com/js/pg/pg.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/json-formatter-js@2.3.4/dist/json-formatter.umd.js"></script>
     <script>
         $(document).on("click", ".itemRequest .docReal .uri .iconCopy", function(){
             var getUrl = $(this).closest(".uri").find(".final").text().trim();
@@ -199,6 +281,164 @@
                 timer: 2500
             });
         });
+
+        // Base URL e Token globais (header), persistidos no navegador e replicados pra todos os Playgrounds.
+        (function(){
+            var defaultBaseUrl = <?= json_encode($baseUrl ?? '', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+            var savedBaseUrl = localStorage.getItem("docsBaseUrl");
+
+            $("#globalBaseUrl").val(savedBaseUrl !== null ? savedBaseUrl : defaultBaseUrl);
+            $("#globalToken").val(localStorage.getItem("docsToken") || "");
+
+            $("#globalBaseUrl").on("change", function(){ localStorage.setItem("docsBaseUrl", $(this).val().trim()); });
+            $("#globalToken").on("change", function(){ localStorage.setItem("docsToken", $(this).val().trim()); });
+        })();
+
+        // O CSS de stretch depende do .row do bootstrap deles ser flex — nem sempre é.
+        // Garante a altura do Playground igual à do conteúdo do endpoint medindo em JS.
+        function syncPlaygroundHeights(){
+            $(".itemRequest .requestRow").each(function(){
+                var $docReal = $(this).find(".docReal");
+                var $playground = $(this).find(".requestPlayground");
+                $playground.css("height", $docReal.outerHeight() + "px");
+            });
+        }
+        $(window).on("load resize", syncPlaygroundHeights);
+        setTimeout(syncPlaygroundHeights, 300); // depois de fontes/ícones carregarem e ajustarem o layout
+
+        // Busca client-side: filtra a lista lateral e os cards pelo título/uri.
+        $("#docsSearch").on("keyup", function(){
+            var term = $(this).val().trim().toLowerCase();
+            $(".navItem").each(function(){
+                $(this).toggle(!term || $(this).data("search").indexOf(term) !== -1);
+            });
+            $(".itemRequest").each(function(){
+                $(this).toggle(!term || $(this).data("search").indexOf(term) !== -1);
+            });
+        });
+
+        // Monta URL/método/headers/body a partir do form do Playground (usado pro envio real e pro "Copiar cURL").
+        function buildPlaygroundRequest($form){
+            var baseUrl = $("#globalBaseUrl").val().trim().replace(/\/$/, "");
+            var method = $form.data("method");
+            var uri = $form.data("uri");
+            var version = $form.data("version");
+            var protectedRoute = $form.data("protected") === 1 || $form.data("protected") === "1";
+
+            var query = [];
+            var body = {};
+            var hasBody = false;
+            var invalidJson = null;
+
+            $form.find("input[data-location], textarea[data-location]").each(function(){
+                var $field = $(this);
+                var location = $field.data("location");
+                var name = $field.attr("name");
+                var value = $field.val();
+
+                if (location === "urlcomponent") {
+                    uri = uri.replace(new RegExp("\\{" + name + "(:[^}]+)?\\}"), encodeURIComponent(value));
+                } else if (location === "urlparam") {
+                    if (value !== "") query.push(encodeURIComponent(name) + "=" + encodeURIComponent(value));
+                } else if (location === "body") {
+                    hasBody = true;
+                    try { body = JSON.parse(value || "{}"); }
+                    catch(err) { invalidJson = err.message; }
+                }
+            });
+
+            var url = baseUrl + "/v" + version + "/" + uri + (query.length ? "?" + query.join("&") : "");
+            var headers = { "Content-Type": "application/json" };
+            var token = $("#globalToken").val().trim();
+            if (protectedRoute && token) {
+                headers["Authorization"] = "Bearer " + token;
+            }
+
+            return {
+                url: url,
+                method: method,
+                headers: headers,
+                body: body,
+                hasBody: hasBody && method !== "GET" && method !== "DELETE",
+                invalidJson: invalidJson,
+            };
+        }
+
+        // Gera um comando cURL (bash) equivalente ao request montado.
+        function buildCurlCommand(req){
+            var escapeSingleQuotes = function(str){ return String(str).replace(/'/g, "'\\''"); };
+            var parts = ["curl -X " + req.method, "'" + escapeSingleQuotes(req.url) + "'"];
+
+            Object.keys(req.headers).forEach(function(key){
+                parts.push("-H '" + escapeSingleQuotes(key + ": " + req.headers[key]) + "'");
+            });
+
+            if (req.hasBody) {
+                parts.push("-d '" + escapeSingleQuotes(JSON.stringify(req.body)) + "'");
+            }
+
+            return parts.join(" \\\n  ");
+        }
+
+        // Playground: monta a URL real (path/query/body) e dispara a requisição.
+        $(document).on("submit", ".playgroundForm", function(e){
+            e.preventDefault();
+            var $form = $(this);
+            var $responseBox = $form.closest(".requestPlayground").find(".responseBox");
+            var req = buildPlaygroundRequest($form);
+
+            if (req.invalidJson) {
+                $responseBox.show().empty().append($("<pre>").text("JSON inválido no corpo da requisição: " + req.invalidJson));
+                return;
+            }
+
+            var options = { method: req.method, headers: req.headers };
+            if (req.hasBody) {
+                options.body = JSON.stringify(req.body);
+            }
+
+            $responseBox.show().empty().append($("<pre>").text("Enviando..."));
+            fetch(req.url, options)
+                .then(function(res){ return res.text().then(function(text){ return { status: res.status, text: text }; }); })
+                .then(function(result){
+                    $responseBox.empty();
+                    $responseBox.append(
+                        $("<div>").addClass("responseStatus " + (result.status >= 400 ? "error" : "ok")).text("HTTP " + result.status)
+                    );
+
+                    try {
+                        var parsed = JSON.parse(result.text);
+                        var formatter = new JSONFormatter(parsed, 2);
+                        $responseBox.append(formatter.render());
+                    } catch(err) {
+                        $responseBox.append($("<pre>").text(result.text));
+                    }
+                })
+                .catch(function(err){
+                    $responseBox.empty().append($("<pre>").text("Erro ao enviar requisição: " + err.message));
+                });
+        });
+
+        // Copiar cURL: mesma montagem de request, só transforma em comando em vez de enviar.
+        $(document).on("click", ".copyCurlBtn", function(){
+            var $form = $(this).closest(".requestPlayground").find(".playgroundForm");
+            var req = buildPlaygroundRequest($form);
+
+            if (req.invalidJson) {
+                swal("JSON inválido", "Corrija o corpo da requisição antes de copiar: " + req.invalidJson, "error", {
+                    buttons: false, timer: 2500
+                });
+                return;
+            }
+
+            pg.copyToClipboard(buildCurlCommand(req));
+            swal("cURL copiado!", "Comando cURL copiado para área de transferência", "success", {
+                buttons: false,
+                closeOnClickOutside: false,
+                closeOnEsc: false,
+                timer: 2500
+            });
+        });
     </script>
 </body>
-</html> 
+</html>
