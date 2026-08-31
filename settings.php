@@ -58,6 +58,7 @@ if(!function_exists('getallheaders')){
 }
 
 function explodeException($error){
+    if (php_sapi_name() === 'cli') { var_dump($error->getMessage()); }
     // if(isset(\PSF::getConfig()->settings['debug']) && \PSF::getConfig()->settings['debug']){
         Http::response("Erro na execução da tarefa! Por favor, contacte o suporte.", [
             'code'  => $error->getCode(),

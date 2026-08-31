@@ -29,7 +29,12 @@ class Request{
 
 					$this->settings['url'] = sprintf("%s?%s", $this->settings['url'], http_build_query($body));
 				}else if($encoded == HTTPBodyEncoded::Multipart){
-
+					// Body fica como array PHP puro (sem json_encode) — o cURL, ao
+					// receber um array em CURLOPT_POSTFIELDS (ver send()), monta o
+					// multipart/form-data com boundary sozinho. Não setar um header
+					// Content-Type manual pra multipart junto com isso: o boundary
+					// gerado pelo cURL não bateria com um Content-Type fixo.
+					$this->settings['body'] = $body;
 				}
 			}else{
 				$this->settings['body'] = json_encode($body);
@@ -60,6 +65,8 @@ class Request{
 		
 		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
 		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 5);
+		curl_setopt($curl, CURLOPT_TIMEOUT, 30);
 
 		if(isset($this->settings['headers']) && !empty($this->settings['headers'])){
 			curl_setopt($curl, CURLOPT_HTTPHEADER, $this->settings['headers']);

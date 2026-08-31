@@ -7,6 +7,7 @@ use \Psf\Database\Dialect\DialectFactory;
 use \Psf\Model\ModelQuery;
 use \Psf\Model\ModelSerializer;
 use \Psf\Model\ModelHydrator;
+use \Psf\Model\MetadataCache;
 use \Psf\Http\Http;
 
 use \Psf\Enumerators\{DBDriver};
@@ -70,7 +71,8 @@ class Model{
 
 		foreach ($primarys as $prop) {
 			$placeholder           = 'pk_bind_' . $prop;
-			$parts[]               = $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier($prop) . ' = :' . $placeholder;
+			$column                = MetadataCache::getColumnByProp($this::class, $prop) ?: $prop;
+			$parts[]               = $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier($column) . ' = :' . $placeholder;
 			$params[$placeholder]  = $this->{$prop};
 		}
 
@@ -105,7 +107,7 @@ class Model{
 			$dialect   = DialectFactory::fromConfig($configDb2);
 			$table     = Model::getTable($this);
 			$parts     = array_map(
-				fn($item) => $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier($item) . ' = ' . $this->{$item},
+				fn($item) => $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier(MetadataCache::getColumnByProp($this::class, $item) ?: $item) . ' = ' . $this->{$item},
 				$primarys
 			);
 			return match (true) {

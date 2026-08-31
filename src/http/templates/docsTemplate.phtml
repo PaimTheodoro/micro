@@ -134,7 +134,11 @@
 
                     $fieldsByLocation = ['urlcomponent' => [], 'urlparam' => [], 'body' => []];
                     foreach ($request['fields'] ?? [] as $field) {
-                        $fieldsByLocation[$field['location']][] = $field;
+                        $location = $field['location'] ?? 'body';
+                        if (!isset($fieldsByLocation[$location])) {
+                            $location = 'body';
+                        }
+                        $fieldsByLocation[$location][] = $field;
                     }
                     ?>
                     <div class="row">
@@ -209,9 +213,13 @@
                                                         <?php
                                                         $groupedFields = ['urlcomponent' => '', 'urlparam' => '', 'body' => ''];
                                                         foreach ($request['fields'] as $field) {
+                                                            $location = $field['location'] ?? 'body';
+                                                            if (!isset($groupedFields[$location])) {
+                                                                $location = 'body';
+                                                            }
                                                             ob_start();
                                                             include __DIR__ . '/docFieldTemplate.phtml';
-                                                            $groupedFields[$field['location']] .= ob_get_clean();
+                                                            $groupedFields[$location] .= ob_get_clean();
                                                         }
 
                                                         if (!empty($groupedFields['urlcomponent'])) {

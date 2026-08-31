@@ -48,6 +48,24 @@ class CloudStorage{
 		}
 	}
 
+	public static function getObject(S3Client $connect, string $filename, string $saveTo){
+		$configAws = \PSF::getConfig()->aws;
+
+		if(strtoupper($configAws['provider']) == 'R2'){
+			try {
+				$connect->getObject([
+					'Bucket' 	=> $configAws['bucket'],
+					'Key'    	=> $filename,
+					'SaveAs' 	=> $saveTo,
+				]);
+
+				return $saveTo;
+			} catch (\Aws\S3\Exception\S3Exception $e) {
+				return false;
+			}
+		}
+	}
+
 	public static function deleteObject(\Aws\S3\S3Client $connect, string $filename){
 		$configAws = \PSF::getConfig()->aws;
 

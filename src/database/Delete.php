@@ -11,7 +11,7 @@ class Delete extends Connect{
     private $connection;
     private $database;
 
-    public static function exe($table, $terms, $parseString = null, $database = 'default', array $termsParams = []){
+    public static function exe($table, $terms, $parseString = '', $database = 'default', array $termsParams = []){
         $obj = new Delete;
 
         if(empty(self::$connection)){

@@ -168,6 +168,10 @@ class CheckFields{
 				}
 			}
 
+			if(($field['type'] ?? null) === 'boolean'){
+				$entry['isBoolean'] = true;
+			}
+
 			$input[$field['name']] = $entry;
 		}
 
