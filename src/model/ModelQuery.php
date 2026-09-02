@@ -113,7 +113,6 @@ class ModelQuery
 
     public function all()
     {
-        $this->builder->setLimit(null);
         return $this->execute();
     }
 

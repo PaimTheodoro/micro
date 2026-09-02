@@ -18,7 +18,11 @@ class QueryHydrator
         }
 
         if ($Read->getRowCount() == 0) {
-            return false;
+            // ->one() (limit 1) mantém o contrato documentado "false = nada encontrado".
+            // Qualquer outra chamada multi-linha (->all(), sem limit ou limit > 1) precisa
+            // devolver array vazio — devolver false aqui quebra todo `foreach($x->all() as ...)`
+            // que não checa o retorno antes de iterar.
+            return $query['limit'] == 1 ? false : [];
         }
 
         $result          = $Read->getResult();

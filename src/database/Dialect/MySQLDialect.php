@@ -57,7 +57,7 @@ class MySQLDialect implements DialectInterface
         $host    = $config['hostname'];
         $db      = $config['database'];
         $port    = $config['port'] ?? 3306;
-        return "mysql:host={$host};dbname={$db};port={$port};charset=utf8";
+        return "mysql:host={$host};dbname={$db};port={$port};charset=utf8mb4";
     }
 
     public function autoIncrement(): string

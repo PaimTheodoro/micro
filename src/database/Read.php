@@ -62,23 +62,26 @@ class Read extends Connect{
             foreach($this->places as $key => $value){
                 $pattern = '/%/';
                 if (preg_match($pattern, $value)) {
-                    $likeInicial = false;
-                    $likeFinal = false;
-                    if(substr($value, 0, 2) == "'%"){
-                        $likeInicial = true;
-                    }
-                    if(substr($value, -2) == "%'"){
-                        $likeFinal = true;
-                    }
+                    $likeInicial = substr($value, 0, 2) == "'%";
+                    $likeFinal   = substr($value, -2) == "%'";
 
-                    $value = str_replace(["'", "%"], "", $value);
+                    if($likeInicial || $likeFinal){
+                        $stripped = str_replace(["'", "%"], "", $value);
 
-                    if($likeInicial && $likeFinal){
-                        $this->read->bindValue(":{$key}", "%{$value}%", \PDO::PARAM_STR);
-                    }else if($likeInicial && !$likeFinal){
-                        $this->read->bindValue(":{$key}", "%{$value}", \PDO::PARAM_STR);
-                    }else if(!$likeInicial && $likeFinal){
-                        $this->read->bindValue(":{$key}", "{$value}%", \PDO::PARAM_STR);
+                        if($likeInicial && $likeFinal){
+                            $this->read->bindValue(":{$key}", "%{$stripped}%", \PDO::PARAM_STR);
+                        }else if($likeInicial){
+                            $this->read->bindValue(":{$key}", "%{$stripped}", \PDO::PARAM_STR);
+                        }else{
+                            $this->read->bindValue(":{$key}", "{$stripped}%", \PDO::PARAM_STR);
+                        }
+                    }else{
+                        // Valor comum que só por coincidência contém '%' (ex.: "50% OFF"),
+                        // não um padrão LIKE — precisa ser bindado como está, senão o
+                        // placeholder fica sem valor e o PDO estoura HY093.
+                        $this->read->bindValue(
+                            ":{$key}", $value, (is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR )
+                        );
                     }
                 }else{
                     $this->read->bindValue(
