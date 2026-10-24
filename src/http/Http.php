@@ -55,7 +55,10 @@ class Http{
 	}
 
 	public static function response($message = "", $data = [], $status = 200, $headers = []){
-		$statusCode = is_numeric($status) ? $status : ($status instanceof HttpStatusCode ? $status->value : 200);
+		$statusCode = is_numeric($status) ? (int) $status : ($status instanceof HttpStatusCode ? $status->value : 200);
+		if($statusCode < 100 || $statusCode > 599){
+			$statusCode = 500;
+		}
 
 		$response = [];
 
@@ -71,16 +74,24 @@ class Http{
 			throw new HttpResponseException($response, $statusCode);
 		}
 
+		// SUBSTITUTE troca bytes UTF-8 inválidos por U+FFFD em vez de fazer o encode falhar
+		$json = json_encode($response, JSON_INVALID_UTF8_SUBSTITUTE);
+		if($json === false){
+			$statusCode = 500;
+			$json       = json_encode(['message' => 'Erro ao codificar a resposta']);
+		}
+
 		header('Content-Type: application/json');
 		http_response_code($statusCode);
 
 		if(!empty($headers)){
 			foreach($headers as $header => $value){
-				header($header . ": " . $value);
+				// CR/LF no nome ou valor permitiria injetar headers extras
+				header(str_replace(["\r", "\n"], '', (string) $header) . ": " . str_replace(["\r", "\n"], '', (string) $value));
 			}
 		};
 
-		echo json_encode($response);
+		echo $json;
 		exit;
 	}
 
@@ -100,9 +111,10 @@ class Http{
 			}
 		}
 
-		if($authUser !== $username || $authPass !== $password){
+		// hash_equals: comparação em tempo constante, sem vazar o tamanho/prefixo correto
+		if(!hash_equals($username, (string) $authUser) || !hash_equals($password, (string) $authPass)){
 			header('WWW-Authenticate: Basic realm="' . $realm . '"');
-			header('HTTP/1.1 401 Unauthorized');
+			http_response_code(401);
 			echo 'Acesso não autorizado.';
 			exit;
 		}

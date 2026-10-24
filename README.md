@@ -1,6 +1,6 @@
 # PSF Micro-Framework PHP (Beta)
 
-Bem-vindo ao **PSF Micro-Framework**, um micro-framework PHP otimizado para o desenvolvimento de APIs, com suporte a bancos de dados MySQL, SQLServer e PostgreSQL. Este framework é projetado para ser leve, flexível e fácil de usar, com um sistema de roteamento robusto e um *query builder* eficiente. Atualmente, o framework está em fase Beta.
+Bem-vindo ao **PSF Micro-Framework**, um micro-framework PHP otimizado para o desenvolvimento de APIs, com suporte a bancos de dados MySQL, SQLServer, PostgreSQL e SQLite. Este framework é projetado para ser leve, flexível e fácil de usar, com um sistema de roteamento robusto e um *query builder* eficiente. Atualmente, o framework está em fase Beta.
 
 ## Requisitos
 
@@ -32,8 +32,35 @@ composer require psf/framework
 Exemplo de configuração do projeto: (esta configuração deve ser adicionada ao arquivo de configuração)
 
 ```php
+use Psf\Enumerators\DBDriver;
+
 return [
-    
+    'environment' => 'dev', // 'prd' mantém o cache de rotas estático (limpe no deploy)
+
+    'db' => [
+        'default' => [
+            'driver'   => DBDriver::MySQL, // MySQL, PostgreSQL, SQLServer ou SQLite
+            'hostname' => 'localhost',     // 'host', 'user' e 'pass' também são aceitos
+            'username' => 'root',
+            'password' => '',
+            'database' => 'meu_banco',     // SQLite: caminho do arquivo ou ':memory:'
+            'port'     => 3306,
+        ],
+    ],
+
+    'jwt' => [
+        'secret' => 'uma-chave-longa-e-aleatoria', // mínimo de 16 caracteres
+    ],
+
+    'settings' => [
+        'controllers'    => [__DIR__ . '/app/Controllers'],
+        'debug'          => false, // true expõe mensagem/arquivo/linha dos erros de banco na resposta
+        'authentication' => [App\Auth::class, 'verify'],
+        'cors'           => [
+            'origins'     => ['https://app.exemplo.com'], // ou '*'
+            'credentials' => false,
+        ],
+    ],
 ];
 ```
 

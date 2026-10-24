@@ -3,16 +3,16 @@
     "description": "Framework PHP para desenvolvimento de APIs",
     "type": "library",
     "license": "MIT",
-    "version": "0.0.15",
     "authors": [
         {
             "name": "Theodoro Paim",
             "email": "theodoro@porglin.com"
         }
     ],
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "require": {
-        "php": ">=8.0",
+        "php": ">=8.1",
+        "ext-pdo": "*",
         "jenssegers/agent": "^2.6",
         "spatie/ignition": "^1.11"
     },
@@ -24,19 +24,20 @@
             "Psf\\": "src/",
             "Psf\\Database\\": "src/database/",
             "Psf\\Model\\": "src/model/",
-            "Psf\\Api\\": "src/api/",
             "Psf\\Helper\\": "src/helpers/",
             "Psf\\Http\\": "src/http/",
             "Psf\\Utils\\": "src/utils/",
-            "Psf\\Enumerators\\": "src/enum/"
+            "Psf\\Enumerators\\": "src/enum/",
+            "Psf\\Model\\Attributes\\": "src/model/attributes/"
         }
     },
     "bin": [
         "bin/phinx"
     ],
     "require-dev": {
-        "robmorgan/phinx": "0.x-dev",
-        "pestphp/pest": "^3.0"
+        "robmorgan/phinx": "^0.16",
+        "pestphp/pest": "^3.0",
+        "phpstan/phpstan": "^2.0"
     },
     "autoload-dev": {
         "psr-4": {
@@ -47,5 +48,18 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
+    },
+    "prefer-stable": true,
+    "suggest": {
+        "ext-apcu": "Cache de rotas e de metadados dos models entre requisições",
+        "ext-curl": "Necessário para Psf\\Http\\Http::request e Psf\\Http\\Request",
+        "aws/aws-sdk-php": "Necessário para Psf\\Utils\\CloudStorage (Cloudflare R2)",
+        "robmorgan/phinx": "Necessário para o comando bin/phinx (migrations) em projetos consumidores"
+    },
+    "scripts": {
+        "test": "pest",
+        "test:unit": "pest --testsuite=Unit",
+        "test:integration": "pest --testsuite=Integration",
+        "analyse": "phpstan analyse --memory-limit=512M"
     }
 }

@@ -1,0 +1,16 @@
+parameters:
+    level: 1
+    paths:
+        - src
+        - settings.php
+    scanFiles:
+        - settings.php
+    excludePaths:
+        - src/http/templates
+    ignoreErrors:
+        # Dependências opcionais (ver "suggest" no composer.json): não instaladas na análise
+        -
+            identifier: class.notFound
+            paths:
+                - src/utils/CloudStorage.php
+                - src/utils/Email.php

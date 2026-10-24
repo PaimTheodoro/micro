@@ -16,7 +16,11 @@ class TableAnalyzer extends AbstractCommand
 
     protected function configure(): void
     {
+        // Registra as opções padrão do Phinx (--configuration, --parser, ...) usadas pelo bootstrap()
+        parent::configure();
+
         $this
+            ->setName('analyze:table-vs-model')
             ->setDescription('Analisa uma tabela do banco de dados e compara com um modelo existente')
             ->addArgument('table', InputArgument::REQUIRED, 'Nome da tabela no banco de dados')
             ->addArgument('model', InputArgument::REQUIRED, 'Nome completo da classe do modelo (ex: App\\Models\\User\\User)')
@@ -26,6 +30,9 @@ class TableAnalyzer extends AbstractCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // Carrega a config do Phinx (getConfig() lança "No config set yet" sem isto)
+        $this->bootstrap($input, $output);
+
         $io = new SymfonyStyle($input, $output);
         $tableName = $input->getArgument('table');
         $modelClass = $input->getArgument('model');
@@ -34,7 +41,8 @@ class TableAnalyzer extends AbstractCommand
         try {
             // Obtém a configuração do banco de dados
             $config = $this->getConfig();
-            $environment = $config->getEnvironment($config->getDefaultEnvironment());
+            // Config::getEnvironment() devolve só o array de opções; o Environment (com adapter) vem do manager
+            $environment = $this->getManager()->getEnvironment($config->getDefaultEnvironment());
             
             // Conecta ao banco de dados
             $adapter = $environment->getAdapter();

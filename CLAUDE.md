@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository purpose
 
-PSF Micro-Framework PHP — a Composer library (`psf/framework`) for building APIs. It is consumed by other projects, so all public APIs must stay backwards-compatible. PHP 8.0+, optional APCu for caching. Drivers: MySQL, PostgreSQL, SQL Server (and SQLite via Phinx).
+PSF Micro-Framework PHP — a Composer library (`psf/framework`) for building APIs. It is consumed by other projects, so all public APIs must stay backwards-compatible. PHP 8.1+ (enums), optional APCu for caching. Drivers: MySQL, PostgreSQL, SQL Server, SQLite.
 
 ## Common commands
 
@@ -12,7 +12,8 @@ PSF Micro-Framework PHP — a Composer library (`psf/framework`) for building AP
 # Tests (Pest v3, engine = PHPUnit; bootstrap inits PSF with tests/Fixtures/config.php)
 ./vendor/bin/pest                                 # all tests
 ./vendor/bin/pest --testsuite=Unit                # unit only
-./vendor/bin/pest --testsuite=Integration         # needs real MySQL at 127.0.0.1:3306, db psf_test
+./vendor/bin/pest --testsuite=Integration         # SQLite :memory: (no DB server needed); schema built in tests/Pest.php
+composer analyse                                  # PHPStan level 1 (phpstan.neon); CI runs it too
 ./vendor/bin/pest tests/Unit/Model/MetadataCacheTest.php   # single file
 ./vendor/bin/pest --filter='maps properties'      # single test by name
 ./vendor/bin/pest --coverage
@@ -23,8 +24,9 @@ PSF Micro-Framework PHP — a Composer library (`psf/framework`) for building AP
 ./bin/phinx rollback
 ./bin/phinx status
 ./bin/phinx create NomeDaMigration
-./bin/phinx generate-model -- --model=App\\Models\\Usuario   # registered command, generates migration from model
-./bin/phinx check-model   -- --model=App\\Models\\Usuario   # diff model vs DB
+./bin/phinx make:migration-from-model 'App\Models\Usuario'        # generates a migration from a model
+./bin/phinx make:model-from-table usuarios 'App\Models\Usuario'   # generates a model from a table
+./bin/phinx analyze:table-vs-model usuarios 'App\Models\Usuario'  # diff model vs DB
 ```
 
 There is no build step and no linter configured. `composer install` is the only setup command.
@@ -57,6 +59,8 @@ Persistence goes through the thin CRUD shims in [src/database/](src/database/): 
 ### Query builder pipeline
 `Modelo::find()` (via `ModelTrait`) → [`ModelQuery`](src/model/ModelQuery.php) → [`QueryBuilder`](src/model/QueryBuilder.php) → SQL string → `Read::exe()`. Hydration of fetched rows into model instances (including `leftJoinAndSelect` 1:N relations) happens in [`ModelHydrator`](src/model/ModelHydrator.php) / [`QueryHydrator`](src/model/QueryHydrator.php). Serialization out (`toArray()`) lives in [`ModelSerializer`](src/model/ModelSerializer.php). These are an explicit split — keep responsibilities separate when modifying.
 
+All entity/column references (where array/string, join `ON`, orderBy, groupBy, fields, expressions) go through [`ReferenceResolver`](src/model/ReferenceResolver.php) — **don't add another translator**. QueryBuilder defers resolution (`compileField()` returns a marker, `finalize()`/`writeQuery()` resolve it) so call order doesn't matter; use `generateField()` only when you need the resolved string immediately. Internal filters (soft delete) use bare property names, which always mean the root entity.
+
 `QueryBuilder::$allowedSqlFunctions` is a hardcoded allow-list for SQL function calls in expressions; SQL injection has been an issue here historically, so widen it carefully.
 
 ### Database dialects
@@ -65,10 +69,10 @@ Persistence goes through the thin CRUD shims in [src/database/](src/database/): 
 `DBDriver` is a backed int enum, but legacy configs may pass the raw int; code that reads `$config['driver']` should tolerate both (see [phinx.php](phinx.php) for the canonical `DBDriver::tryFrom((int) $driver)` pattern).
 
 ### Phinx integration
-[bin/phinx](bin/phinx) walks up the directory tree from the consumer project, finds the consumer's autoloader and a bootstrap file (`bootstrap/app.php`, `config/bootstrap.php`, `bootstrap.php`, or `config.php`), inits PSF with it, then sets `PHINX_CONFIG_FILE` to the framework's [phinx.php](phinx.php) and delegates to Phinx. [phinx.php](phinx.php) translates `config['db']` entries into Phinx environments and registers three custom commands from `src/database/Command/`: [`ModelAwareMigration`](src/database/Command/ModelAwareMigration.php) (trait used inside migrations to generate SQL from a model), [`ModelGenerator`](src/database/Command/ModelGenerator.php) (`generate-model` CLI), [`TableAnalyzer`](src/database/Command/TableAnalyzer.php) (`check-model` CLI). Migrations are written into the **consumer's** `db/migrations`, not the framework's.
+[bin/phinx](bin/phinx) walks up the directory tree from the consumer project, finds the consumer's autoloader and a bootstrap file (`bootstrap/app.php`, `config/bootstrap.php`, `bootstrap.php`, or `config.php`), inits PSF with it, then sets `PHINX_CONFIG_FILE` to the framework's [phinx.php](phinx.php) and runs the Phinx application. [phinx.php](phinx.php) translates `config['db']` entries into Phinx environments (Phinx cannot register commands from config, so [bin/phinx](bin/phinx) adds them itself with `addCommands()`): [`ModelAwareMigration`](src/database/Command/ModelAwareMigration.php) (`make:migration-from-model`), [`ModelGenerator`](src/database/Command/ModelGenerator.php) (`make:model-from-table`), [`TableAnalyzer`](src/database/Command/TableAnalyzer.php) (`analyze:table-vs-model`). Each command calls `parent::configure()` and `$this->bootstrap()`, and gets its adapter via `getManager()->getEnvironment(...)`. Migrations are written into the **consumer's** `db/migrations`, not the framework's.
 
 ### Test setup
-`phpunit.xml` disables `apc.enable_cli` so APCu paths short-circuit during tests. `tests/bootstrap.php` calls `PSF::init()` with [tests/Fixtures/config.php](tests/Fixtures/config.php) — a placeholder MySQL config + a fixed JWT secret. Unit tests mock PDO; only `tests/Integration` actually hits a database. Fixture models live in `tests/Fixtures/Models/` and use the `Tests\Fixtures\Models\` namespace (see `composer.json` `autoload-dev`).
+`phpunit.xml` disables `apc.enable_cli` so APCu paths short-circuit during tests. `tests/bootstrap.php` calls `PSF::init()` with [tests/Fixtures/config.php](tests/Fixtures/config.php) — a placeholder MySQL config + a fixed JWT secret. Unit tests mock PDO; `tests/Integration` hits a real SQLite `:memory:` database (config in [tests/Fixtures/config.sqlite.php](tests/Fixtures/config.sqlite.php), tables created per test in [tests/Pest.php](tests/Pest.php)). `tests/bootstrap.php` defines `PSF_TESTING`, so `Http::response()` throws `HttpResponseException` instead of `exit`. Fixture models live in `tests/Fixtures/Models/` and use the `Tests\Fixtures\Models\` namespace (see `composer.json` `autoload-dev`).
 
 ## Documentation
 

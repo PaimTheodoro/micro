@@ -155,6 +155,7 @@ class UUID{
 
 		$val = $hash($raw, true);	
 		$tmp = unpack('C16', $val);
+		$byte = [];
 		foreach (array_keys($tmp) as $key)
 			$byte[$key - 1] = $tmp[$key];
 

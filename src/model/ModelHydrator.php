@@ -4,38 +4,23 @@ namespace Psf\Model;
 
 class ModelHydrator
 {
-    private static function isAttributeType($attribute, string $type): bool
-    {
-        $className = $attribute->getName();
-        return substr_compare($className, $type, -strlen($type)) === 0 || $className === $type;
-    }
-
     private static function findAttributeByType($attributes, string $type): array
     {
-        return array_values(array_filter($attributes, fn($attr) => self::isAttributeType($attr, $type)));
+        return MetadataCache::findAttributeByType($attributes, $type);
     }
 
     public static function getPropByColumn($class, $column): string|bool
     {
-        $refClass = new \ReflectionClass($class);
-        foreach ($refClass->getProperties() as $prop) {
-            $attrs = $prop->getAttributes();
-            if (!empty($attrs)) {
-                $findColumn = self::findAttributeByType($attrs, 'Column');
-                if (!empty($findColumn) && isset($findColumn[0])) {
-                    $args    = $findColumn[0]->getArguments();
-                    $colName = $args[0] ?? $args['name'] ?? null;
-                    if ($colName === $column) {
-                        return $prop->getName();
-                    }
-                }
-            }
-        }
-        return false;
+        return MetadataCache::getPropByColumn($class, (string) $column);
     }
 
     public static function getColumnByProp($class, $prop = null): string|array|bool
     {
+        // Caso mais comum (uma propriedade): resolvido pelo cache, sem Reflection
+        if (is_string($prop) && $prop !== '') {
+            return MetadataCache::getColumnByProp($class, $prop);
+        }
+
         $refClass = new \ReflectionClass($class);
 
         if (!empty($prop)) {

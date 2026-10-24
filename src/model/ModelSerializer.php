@@ -6,15 +6,9 @@ use Psf\Helper\UUID;
 
 class ModelSerializer
 {
-    private static function isAttributeType($attribute, string $type): bool
-    {
-        $className = $attribute->getName();
-        return substr_compare($className, $type, -strlen($type)) === 0 || $className === $type;
-    }
-
     private static function findAttributeByType($attributes, string $type): array
     {
-        return array_values(array_filter($attributes, fn($attr) => self::isAttributeType($attr, $type)));
+        return MetadataCache::findAttributeByType($attributes, $type);
     }
 
     public static function serializeFields($object, $removePrimarys = false): array
@@ -108,26 +102,23 @@ class ModelSerializer
 
     public static function serializeData($class, array $data, bool $asArray = false, null|array $joins = []): object|array|null
     {
-        $refClass = new \ReflectionClass($class);
-
         if (!$asArray) {
             $response = new $class;
 
-            foreach ($refClass->getProperties() as $property) {
-                $attributes = $property->getAttributes();
-                $column     = self::findAttributeByType($attributes, 'Column');
+            // Plano em cache: sem Reflection por linha
+            foreach (MetadataCache::getPropertyPlan($class) as $property) {
+                $propName = $property['prop'];
 
-                if (!empty($column)) {
-                    $args       = $column[0]->getArguments();
-                    $columnName = $args[0] ?? $args['name'] ?? null;
-                    $response->{$property->getName()} = (!empty($data[$columnName]) || (isset($data[$columnName]) && $data[$columnName] == 0))
+                if ($property['hasColumn']) {
+                    $columnName = $property['column'] ?? '';
+                    $response->{$propName} = (!empty($data[$columnName]) || (isset($data[$columnName]) && $data[$columnName] == 0))
                         ? $data[$columnName]
                         : null;
                 } else {
                     if (!empty($joins)) {
                         $findJoinForProperty = array_filter(
                             $joins,
-                            fn($item) => !empty($item['andSelect']) && $item['andSelect'] == $property->getName()
+                            fn($item) => !empty($item['andSelect']) && $item['andSelect'] == $propName
                         );
 
                         if (!empty($findJoinForProperty)) {
@@ -153,8 +144,8 @@ class ModelSerializer
                         }
                     }
 
-                    if (isset($data[$property->getName()]) && !$property->isStatic()) {
-                        $response->{$property->getName()} = $data[$property->getName()];
+                    if (isset($data[$propName]) && !$property['static']) {
+                        $response->{$propName} = $data[$propName];
                     }
                 }
             }
@@ -166,23 +157,11 @@ class ModelSerializer
         $response = [];
 
         foreach (array_keys($data) as $key) {
-            $findColumnExist = array_values(array_filter(
-                $refClass->getProperties(),
-                function ($prop) use ($key) {
-                    $column = self::findAttributeByType($prop->getAttributes(), 'Column');
-                    if (!empty($column) && isset($column[0])) {
-                        $args    = $column[0]->getArguments();
-                        $colName = $args[0] ?? $args['name'] ?? null;
-                        return $colName === $key;
-                    }
-                    return false;
-                }
-            ));
+            // coluna -> propriedade pelo mapa reverso em cache (antes: varredura de todas as propriedades por chave)
+            $mappedProp = MetadataCache::getPropByColumn($class, (string) $key);
 
-            if (!empty($findColumnExist)) {
-                $response[$findColumnExist[0]->getName()] = $data[$key];
-                // enum coercion hook (intentionally empty — handled by callers when needed)
-                ModelHydrator::propIsEnum($class, ModelHydrator::getPropByColumn($class, $key));
+            if ($mappedProp !== false) {
+                $response[$mappedProp] = $data[$key];
             } else {
                 if (!empty($joins)) {
                     $findJoinForProperty = array_filter($joins, fn($item) => !empty($item['andSelect']) && $item['andSelect']);

@@ -13,9 +13,9 @@ class SQLServerDialect implements DialectInterface
     public function quoteTable(string $table, ?string $database = null): string
     {
         if ($database !== null) {
-            return '[' . $database . '].[dbo].[' . $table . ']';
+            return $this->quoteIdentifier($database) . '.[dbo].' . $this->quoteIdentifier($table);
         }
-        return '[' . $table . ']';
+        return $this->quoteIdentifier($table);
     }
 
     public function topClause(?int $limit, ?int $offset): string
@@ -64,7 +64,7 @@ class SQLServerDialect implements DialectInterface
 
     public function buildDsn(array $config): string
     {
-        $host = $config['hostname'];
+        $host = $config['hostname'] ?? $config['host'];
         $db   = $config['database'];
         return "sqlsrv:Server={$host};Database={$db}";
     }
@@ -82,11 +82,11 @@ class SQLServerDialect implements DialectInterface
     public function addColumnSql(string $column, string $definition): string
     {
         // SQL Server omite a palavra COLUMN
-        return 'ADD [' . $column . '] ' . $definition;
+        return 'ADD ' . $this->quoteIdentifier($column) . ' ' . $definition;
     }
 
     public function modifyColumnSql(string $column, string $definition): string
     {
-        return "ALTER COLUMN [{$column}] {$definition}";
+        return 'ALTER COLUMN ' . $this->quoteIdentifier($column) . ' ' . $definition;
     }
 }

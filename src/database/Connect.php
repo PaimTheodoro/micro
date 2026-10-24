@@ -8,12 +8,16 @@ class Connect{
     static $connect = null;
     static $tables = null;
 
+    /** @var array<string, array<string, array>> Colunas por [database][tabela], memorizadas na requisição. */
+    private static array $columnsCache = [];
+
     private static function doConnect($database = 'default'){
         $configDb = \PSF::getConfig()->db;
 
         if(isset($configDb[$database]) && !empty($configDb[$database])){
-            $username = $configDb[$database]['username'];
-            $password = $configDb[$database]['password'];
+            // Aceita as duas grafias de config (username/password e user/pass); SQLite não usa credenciais
+            $username = $configDb[$database]['username'] ?? $configDb[$database]['user'] ?? null;
+            $password = $configDb[$database]['password'] ?? $configDb[$database]['pass'] ?? null;
             $extras   = $configDb[$database]['extras'] ?? [];
 
             try{
@@ -31,7 +35,13 @@ class Connect{
             }
 
             self::$connect[$database]->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            self::listTables($database);
+
+            // A lista de tabelas é lida uma vez por conexão (antes: um SHOW TABLES a cada operação).
+            // verifyTableExist() a relê quando não encontra a tabela (ex.: criada por migration).
+            if(!isset(self::$tables[$database])){
+                self::listTables($database);
+            }
+
             return self::$connect[$database];
         }else{
             throw new \Exception("Database not found");
@@ -42,13 +52,18 @@ class Connect{
         return self::doConnect($database);
     }
 
-    public static function listTables($database = 'default'){
-        $configDb = \PSF::getConfig()->db[$database];
+    /**
+     * @param bool $refresh Ignora o cache do APCu e consulta o banco (ex.: depois de criar tabelas).
+     */
+    public static function listTables($database = 'default', bool $refresh = false){
+        $configDb    = \PSF::getConfig()->db[$database];
+        $saveCache   = false;
+        $stringCache = null;
 
         if(extension_loaded('apcu')){
             $saveCache = isset($configDb['savecache']) && $configDb['savecache'] == TRUE;
             
-            if($saveCache){
+            if($saveCache && !$refresh){
                 $stringCache = "db_" . $configDb['database'] . "_cache_" . $database;
                 $itens = apcu_fetch($stringCache, $recoverOnApcu);
 
@@ -75,6 +90,7 @@ class Connect{
                 self::$tables[$database] = array_values($itens);
 
                 if(extension_loaded('apcu') && $saveCache){
+                    $stringCache = "db_" . $configDb['database'] . "_cache_" . $database;
                     apcu_store($stringCache, array_values($itens), 604800);
                 }
             }
@@ -86,7 +102,15 @@ class Connect{
     public static function getColunsForTable($table, $database = 'default') : array{
         self::getConnection($database);
 
-        $configDb = \PSF::getConfig()->db[$database];
+        // Memorizado na requisição: Model::toArray() chamava isto (uma ida ao banco) a cada uso
+        if(isset(self::$columnsCache[$database][$table])){
+            return self::$columnsCache[$database][$table];
+        }
+
+        $configDb    = \PSF::getConfig()->db[$database];
+        $saveCache   = false;
+        $stringCache = null;
+        $arrReturn   = [];
 
         if(extension_loaded('apcu')){
             $saveCache = isset($configDb['savecache']) && $configDb['savecache'] == TRUE;
@@ -96,7 +120,7 @@ class Connect{
                 $itens = apcu_fetch($stringCache, $recoverOnApcu);
 
                 if($recoverOnApcu){
-                    return $itens;
+                    return self::$columnsCache[$database][$table] = $itens;
                 }
             }
         }
@@ -115,7 +139,7 @@ class Connect{
                 apcu_store($stringCache, $arrReturn, 604800);
             }
 
-            return $arrReturn;
+            return self::$columnsCache[$database][$table] = $arrReturn;
         }catch (\PDOException $e){
             throw new \Exception("Unable to retrieve fields from database table");
         }
@@ -132,32 +156,39 @@ class Connect{
     }
 
     public static function commitTransaction($database = 'default'){
-        if(self::$connect[$database]->inTransaction()){
+        if(self::inTransactionQuery($database)){
             self::$connect[$database]->commit();
-            self::$connect[$database] = null;
         }
     }
 
     public static function rollBackTransaction($database = 'default'){
-        if(self::$connect[$database]->inTransaction()){
+        if(self::inTransactionQuery($database)){
             self::$connect[$database]->rollBack();
-            self::$connect[$database] = null;
         }
     }
 
     public static function inTransactionQuery($database = 'default'){
-        if(self::$connect[$database]->inTransaction()){
-            return true;
-        }
-        return false;
+        return (self::$connect[$database] ?? null) instanceof \PDO
+            && self::$connect[$database]->inTransaction();
+    }
+
+    /** Descarta as colunas memorizadas (ex.: depois de alterar o schema no mesmo processo). */
+    public static function clearColumnsCache(){
+        self::$columnsCache = [];
     }
 
     public static function verifyTableExist($table, $database = 'default'){
-        if(in_array($table, self::$tables[$database])){
+        if(in_array($table, self::$tables[$database] ?? [])){
             return true;
-        }else{
-            return false;
         }
+
+        // Não achou: a lista pode estar velha (tabela criada depois da conexão) — relê uma vez
+        if(self::$connect[$database] ?? null){
+            self::listTables($database, true);
+            self::clearColumnsCache();
+        }
+
+        return in_array($table, self::$tables[$database] ?? []);
     }
     
     public static function Command($query){

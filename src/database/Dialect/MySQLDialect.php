@@ -13,9 +13,9 @@ class MySQLDialect implements DialectInterface
     public function quoteTable(string $table, ?string $database = null): string
     {
         if ($database !== null) {
-            return '`' . $database . '`.`' . $table . '`';
+            return $this->quoteIdentifier($database) . '.' . $this->quoteIdentifier($table);
         }
-        return '`' . $table . '`';
+        return $this->quoteIdentifier($table);
     }
 
     public function topClause(?int $limit, ?int $offset): string
@@ -54,7 +54,7 @@ class MySQLDialect implements DialectInterface
 
     public function buildDsn(array $config): string
     {
-        $host    = $config['hostname'];
+        $host    = $config['hostname'] ?? $config['host'];
         $db      = $config['database'];
         $port    = $config['port'] ?? 3306;
         return "mysql:host={$host};dbname={$db};port={$port};charset=utf8mb4";
@@ -72,11 +72,11 @@ class MySQLDialect implements DialectInterface
 
     public function addColumnSql(string $column, string $definition): string
     {
-        return 'ADD COLUMN `' . $column . '` ' . $definition;
+        return 'ADD COLUMN ' . $this->quoteIdentifier($column) . ' ' . $definition;
     }
 
     public function modifyColumnSql(string $column, string $definition): string
     {
-        return "MODIFY COLUMN `{$column}` {$definition}";
+        return 'MODIFY COLUMN ' . $this->quoteIdentifier($column) . ' ' . $definition;
     }
 }

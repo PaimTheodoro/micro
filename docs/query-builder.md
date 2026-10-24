@@ -294,3 +294,42 @@ $parses = Usuario::find()
 3. Valide SQL com `getRowQuery()`.
 4. So depois acrescente paginacao e ordenacao.
 5. Me�a tempo da query no banco antes de publicar endpoint pesado.
+
+
+## Referências a entidades e colunas
+
+Em qualquer ponto da query você pode se referir a uma coluna pela **entidade** e pelo **nome da propriedade** — o framework traduz para a tabela/alias e a coluna reais (`createdAt` → `created_at`). Isso vale igualmente para `andWhere`/`orWhere` (em array, associativo ou string), `innerJoin`/`leftJoin` (a condição `ON`), `orderBy`, `groupBy`, `fields` e expressões como `SUM(...)`.
+
+O prefixo de uma referência (`Prefixo.propriedade`) é procurado, nesta ordem, entre as entidades da query (a raiz e os joins):
+
+| Prefixo | Exemplo |
+|---|---|
+| alias | `p.userId` (de `->alias('p')` ou `innerJoin([Produto::class, 'p'], ...)`) |
+| classe completa | `Produto::class . '.userId'` |
+| nome curto da classe | `Produto.userId` |
+| nome da tabela | `produtos.userId` |
+| nome curto, sem diferenciar maiúsculas | `produto.userId` |
+| *(nenhum)* | `userId` — entidade raiz |
+
+Se a entidade tem alias, qualquer das formas acima vira o alias no SQL. Depois do prefixo, o nome é tratado como **propriedade primeiro**; se não for uma propriedade, é mantido como coluna literal (por isso `produtos.user_id` continua funcionando).
+
+```php
+Pedido::find()
+    ->andWhere([Pedido::col('status'), '=', 'pago'])               // Pedido::col() valida a propriedade
+    ->andWhere('(Pedido.total > :min OR total_pago > :min)', ['min' => 100])
+    ->alias('o')
+    ->innerJoin(Cliente::class, 'c', 'c.id = o.clienteId')         // alias em 3 argumentos
+    ->orderBy('c.nome DESC, o.createdAt', null)
+    ->all();
+```
+
+- **A ordem das chamadas não importa**: a tradução acontece ao gerar o SQL, quando todos os joins e aliases já são conhecidos (`andWhere(['p.userId' => 1])` antes do `innerJoin([..., 'p'])` funciona).
+- **`Modelo::col('prop', ?alias)`** devolve a referência (`'App\Pedido.prop'` ou `'alias.prop'`) e lança erro na hora se a propriedade não existir.
+- **Where associativo**: `->andWhere(['status' => 'pago', 'tipo' => [1, 2], 'deletedAt' => null])` gera `status = ? AND tipo IN (...) AND deletedAt IS NULL`.
+- **Palavras soltas** em strings cruas só são traduzidas quando são propriedades da entidade raiz com coluna de nome diferente; palavras reservadas (`AND`, `NULL`...) e chamadas de função nunca. Literais entre aspas e nomes de três níveis (`db.tabela.coluna`) não são tocados.
+- **Prefixo que não resolve** (tabela não registrada, alias de subquery) é mantido como está.
+- **Mesma entidade duas vezes** (self-join): dê um alias a cada uma; a referência pela classe usa a primeira (a raiz).
+
+### Modo estrito
+
+Com `settings.strictQueries = true` (ou `->strict()` numa query), o que parece uma referência mas não resolve **lança `InvalidArgumentException`** em vez de gerar SQL quebrado: classe inexistente, propriedade desconhecida (`Pedido.totl`), prefixo ambíguo (self-join sem alias) e nomes que são, ao mesmo tempo, propriedade e coluna de outra propriedade. O erro acontece ao montar a query, antes de chegar ao banco. Fica desligado por padrão — colunas que existem no banco mas não têm propriedade só funcionam fora do modo estrito.

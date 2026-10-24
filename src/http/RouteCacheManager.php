@@ -15,14 +15,19 @@ class RouteCacheManager{
 
     public function __construct(){
         $this->strategy = 'apcu';
-        $this->key = 'psf_routes_v1';
 
         // Busca o diretório dos controllers. Garante que seja um array.
         $controllersPath = Psf->config('settings', 'controllers');
         $this->scanDirs = $controllersPath ? (array)$controllersPath : [];
 
+        // A chave inclui um hash do app (raiz + diretórios de controllers): duas aplicações no mesmo
+        // pool do APCu não compartilham nem sobrescrevem a tabela de rotas uma da outra.
+        $this->key = 'psf_routes_v1_' . substr(md5((defined('ROOT') ? ROOT : '') . '|' . implode('|', $this->scanDirs)), 0, 12);
+
         // Busca o ambiente da aplicação. O padrão é 'dev'.
-        $this->appEnv = Psf->config('environment') ?? 'dev';
+        // config() devolve false (não null) quando a chave não existe
+        $environment  = Psf->config('environment');
+        $this->appEnv = is_string($environment) && $environment !== '' ? $environment : 'dev';
     }
 
     public function getRoutes(): array{
@@ -44,6 +49,18 @@ class RouteCacheManager{
         apcu_store($cacheKey, $routes, 3600); // Cache por 1 hora, por segurança
 
         return $routes;
+    }
+
+    /**
+     * Descarta a tabela de rotas em cache. Chame no deploy: em `prd` a chave é estática e as
+     * rotas só seriam relidas quando o TTL (1h) expirasse.
+     */
+    public function clear(): bool{
+        if(!extension_loaded('apcu') || !apcu_enabled()){
+            return false;
+        }
+
+        return apcu_delete($this->getCacheKey());
     }
 
     private function getCacheKey(): string{
@@ -89,17 +106,76 @@ class RouteCacheManager{
         return $routes;
     }
     
-    private function getMethodsFromFile(string $file): array{
-        $content = file_get_contents($file);
+    /**
+     * Namespace e nome da primeira classe declarada, via tokens (ignora a palavra "class" em
+     * comentários/strings, `Foo::class` e classes anônimas — o que a regex anterior confundia).
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function parseNamespaceAndClass(string $code): array{
         $namespace = '';
-        if(preg_match('/namespace\s+([^;]+);/', $content, $matches)){
-            $namespace = $matches[1];
+        $className = '';
+        $tokens    = token_get_all($code);
+        $count     = count($tokens);
+
+        for($i = 0; $i < $count; $i++){
+            $token = $tokens[$i];
+            if(!is_array($token)){
+                continue;
+            }
+
+            if($token[0] === T_NAMESPACE && $namespace === ''){
+                for($j = $i + 1; $j < $count; $j++){
+                    $next = $tokens[$j];
+                    if(is_array($next) && in_array($next[0], [T_STRING, T_NAME_QUALIFIED], true)){
+                        $namespace = $next[1];
+                        break;
+                    }
+                    if($next === ';' || $next === '{'){
+                        break;
+                    }
+                }
+            }
+
+            if($token[0] === T_CLASS){
+                // Foo::class (constante) e `new class` (anônima) não declaram classe nomeada
+                $prev = $this->previousSignificantToken($tokens, $i);
+                if($prev !== null && ($prev[0] === T_DOUBLE_COLON || $prev[0] === T_NEW)){
+                    continue;
+                }
+
+                for($j = $i + 1; $j < $count; $j++){
+                    $next = $tokens[$j];
+                    if(is_array($next) && $next[0] === T_STRING){
+                        $className = $next[1];
+                        break 2;
+                    }
+                    if(is_array($next) && in_array($next[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)){
+                        continue;
+                    }
+                    break;
+                }
+            }
         }
 
-        $className = '';
-        if(preg_match('/class\s+([^\s]+)/', $content, $matches)){
-            $className = $matches[1];
+        return [$namespace, $className];
+    }
+
+    private function previousSignificantToken(array $tokens, int $index): ?array{
+        for($i = $index - 1; $i >= 0; $i--){
+            $token = $tokens[$i];
+            if(is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)){
+                continue;
+            }
+
+            return is_array($token) ? $token : [null, $token];
         }
+
+        return null;
+    }
+
+    private function getMethodsFromFile(string $file): array{
+        [$namespace, $className] = $this->parseNamespaceAndClass((string) file_get_contents($file));
 
         if(empty($namespace) || empty($className)){
             return [];

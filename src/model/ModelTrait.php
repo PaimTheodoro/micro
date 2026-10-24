@@ -38,6 +38,20 @@ trait ModelTrait{
         return !empty($result);
     }
 
+    /**
+     * Referência a uma coluna da entidade, pronta para usar em qualquer ponto da query:
+     *   Order::col('createdAt')        → 'App\Models\Order.createdAt'
+     *   Order::col('createdAt', 'o')   → 'o.createdAt'  (com ->alias('o') ou join [Order::class, 'o'])
+     * Valida na hora que a propriedade existe, então um erro de digitação falha aqui e não no SQL.
+     */
+    public static function col(string $prop, ?string $alias = null): string {
+        if (MetadataCache::getColumnByProp(self::class, $prop) === false) {
+            throw new \InvalidArgumentException("'{$prop}' não é uma propriedade mapeada (#[Column]) de " . self::class);
+        }
+
+        return ($alias ?? self::class) . '.' . $prop;
+    }
+
     public static function findById(mixed $id) {
         $primaryKeys = \Psf\Model\Model::getPrimaryKey(self::class, 'prop');
         if(empty($primaryKeys)){

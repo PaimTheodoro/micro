@@ -95,14 +95,6 @@ class Email{
 		    	$this->error = 'Error to processs. No more data.';
 		    	return $this->error;
 		    }
-		}catch(phpmailerException $e){
-			$this->error = $e->errorMessage();
-			
-			if($this->debug){
-				echo $e->errorMessage();
-			}
-
-			return $this->error;
 		}catch(Exception $e){
 			$this->error = $mail->ErrorInfo;
 			

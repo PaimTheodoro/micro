@@ -6,6 +6,8 @@ class TimeZone{
     public static function getAllTimeZones($filter, $other = NULL) {
         $identifiers = \DateTimeZone::listIdentifiers($filter);
 
+        $timeZones = [];
+
         foreach ($identifiers as $identifier) {
             $timeZone = new \DateTimeZone($identifier);
             $offset = $timeZone->getOffset(new \DateTime()) / 3600; // Offset em horas
@@ -19,7 +21,7 @@ class TimeZone{
             return strcmp($a['identifier'], $b['identifier']);
         });
 
-        return $timeZones ?? [];
+        return $timeZones;
     }
 
     public static function getListForSelect($filter, $other = NULL) {

@@ -3,3 +3,8 @@
 /composer.lock
 /config.php
 /test
+.DS_Store
+.phpunit.cache/
+.phpunit.result.cache
+/coverage/
+/.claude/settings.local.json

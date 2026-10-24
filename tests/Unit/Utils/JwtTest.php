@@ -62,3 +62,50 @@ it('skips all validation when $valid is false (useful for inspection)', function
 it('returns false when token has no payload (empty string)', function () {
     expect(JWT::decode('', true))->toBeFalse();
 });
+
+it('verify() returns the payload array for a valid token', function () {
+    $payload = ['user_id' => 7];
+
+    expect(JWT::verify(JWT::encode($payload)))->toMatchArray($payload);
+});
+
+it('verify() returns false for tampered, expired or malformed tokens', function () {
+    $parts = explode('.', JWT::encode(['user_id' => 1]));
+
+    expect(JWT::verify($parts[0] . '.' . $parts[1] . '.assinaturafalsa'))->toBeFalse();
+    expect(JWT::verify(JWT::encode(['exp' => time() - 10])))->toBeFalse();
+    expect(JWT::verify('lixo'))->toBeFalse();
+});
+
+it('validates by default when $valid is omitted', function () {
+    $parts = explode('.', JWT::encode(['user_id' => 1]));
+
+    expect(JWT::decode($parts[0] . '.' . $parts[1] . '.assinaturafalsa'))->toBeFalse();
+});
+
+it('rejects a non-numeric exp or nbf', function () {
+    expect(JWT::verify(JWT::encode(['exp' => 'amanha'])))->toBeFalse();
+    expect(JWT::verify(JWT::encode(['nbf' => 'ontem'])))->toBeFalse();
+});
+
+it('rejects a validly signed token whose payload is not a JSON object', function () {
+    $b64    = fn(string $d) => str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($d));
+    $signed = $b64('{"alg":"HS256","typ":"JWT"}') . '.' . $b64('"texto"');
+    $sig    = $b64(hash_hmac('sha256', $signed, \PSF::config('jwt', 'secret'), true));
+
+    expect(JWT::verify($signed . '.' . $sig))->toBeFalse();
+});
+
+it('throws when the jwt secret is missing or too short', function () {
+    $original = dirname(__DIR__, 2) . '/Fixtures/config.php';
+    $tmp      = sys_get_temp_dir() . '/psf-jwt-short-secret-' . uniqid() . '.php';
+    file_put_contents($tmp, "<?php return ['jwt' => ['secret' => 'curta']];");
+
+    try {
+        \PSF::init(['config' => $tmp]);
+        expect(fn() => JWT::encode(['a' => 1]))->toThrow(RuntimeException::class);
+    } finally {
+        \PSF::init(['config' => $original]);
+        @unlink($tmp);
+    }
+});

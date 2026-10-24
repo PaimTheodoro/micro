@@ -24,7 +24,7 @@ class Router{
 	];
 
 	public function __construct(...$args){
-		$this->method = filter_input(\INPUT_SERVER, 'REQUEST_METHOD', \FILTER_SANITIZE_SPECIAL_CHARS);
+		$this->method = filter_input(\INPUT_SERVER, 'REQUEST_METHOD', \FILTER_SANITIZE_SPECIAL_CHARS) ?: ($_SERVER['REQUEST_METHOD'] ?? null);
 
 		$cacheManager = new RouteCacheManager();
         $this->routes = $cacheManager->getRoutes();
@@ -32,6 +32,57 @@ class Router{
 
 	private function setRoute(array $route){
 		$this->routes[] = $route;
+	}
+
+	/** URL da requisição (reescrita pelo servidor web em `_url`); vazia quando ausente. */
+	private function requestUrl() : string{
+		return (string) ($_GET['_url'] ?? '');
+	}
+
+	/**
+	 * Divide um path de rota em segmentos por '/', ignorando as '/' dentro de `{...}` —
+	 * necessário para regex inline como `{codigo:/^[A-Z]{3}-\d{4}$/}`.
+	 */
+	private function splitPath(string $path) : array{
+		$pieces = [];
+		$buffer = '';
+		$depth  = 0;
+
+		foreach(str_split($this->clearUrl($path)) as $char){
+			if($char === '{'){
+				$depth++;
+			}elseif($char === '}' && $depth > 0){
+				$depth--;
+			}
+
+			if($char === '/' && $depth === 0){
+				$pieces[] = $buffer;
+				$buffer   = '';
+				continue;
+			}
+
+			$buffer .= $char;
+		}
+		$pieces[] = $buffer;
+
+		return $pieces;
+	}
+
+	/**
+	 * Converte a expressão de um parâmetro (`{nome:expr}`) em regex PCRE.
+	 * Aceita pattern pré-definido, regex delimitada (`/^...$/`) ou expressão sem delimitador
+	 * (ancorada, para não casar por substring).
+	 */
+	private function resolvePattern(string $expression) : string{
+		if(isset(self::$patterns[$expression])){
+			return self::$patterns[$expression];
+		}
+
+		if(strlen($expression) > 1 && $expression[0] === '/' && strrpos($expression, '/') > 0){
+			return $expression;
+		}
+
+		return '/^(?:' . str_replace('/', '\/', $expression) . ')$/';
 	}
 
 	private function clearUrl(string $url) : string{
@@ -73,8 +124,21 @@ class Router{
 		}
 	}
 
+	/** Headers da requisição para o log, sem credenciais em claro. */
+	private function loggableHeaders() : array{
+		$headers = getallheaders() ?: [];
+
+		foreach($headers as $name => $value){
+			if(in_array(strtolower((string) $name), ['authorization', 'proxy-authorization', 'cookie'], true)){
+				$headers[$name] = '[redacted]';
+			}
+		}
+
+		return $headers;
+	}
+
 	private function callMethodRoute(){
-        $urlFind = self::clearUrl($_GET['_url']);
+        $urlFind = self::clearUrl($this->requestUrl());
         $matchedRoute = $this->findMatchingRoute($urlFind);
 
         if(empty($matchedRoute)){
@@ -94,9 +158,10 @@ class Router{
      * @return array|null A rota correspondente ou nulo se não encontrada.
      */
     private function findMatchingRoute(string $url): ?array{
-        if(substr($url, 0, 1) == 'v' && is_numeric(substr($url, 1, 1))){
-            $this->version = (int) substr($url, 1, 1);
-            $url = substr($url, 3);
+        // Prefixo de versão: `v<N>` ou `v<N>/...` (qualquer quantidade de dígitos)
+        if(preg_match('#^v(\d+)(?:/(.*))?$#', $url, $versionMatch)){
+            $this->version = (int) $versionMatch[1];
+            $url = $this->clearUrl($versionMatch[2] ?? '');
         }
 
         $this->piecesArr = explode("/", $url);
@@ -116,16 +181,16 @@ class Router{
             }
         }
 
-        // 2. Se não encontrou exata, faz o matching dinâmico (como já faz hoje)
+        // 2. Se não encontrou exata, faz o matching dinâmico
         $potentialRoutes = array_filter($this->routes, function ($item){
             if($item['attributes']['arguments']['method'] !== $this->method) return false;
             if(!empty($this->version) && $item['attributes']['arguments']['version'] !== $this->version) return false;
-            if(count(explode("/", $item['attributes']['arguments']['path'])) !== $this->pieces) return false;
+            if(count($this->splitPath($item['attributes']['arguments']['path'])) !== $this->pieces) return false;
             return true;
         });
 
         foreach($potentialRoutes as $route){
-            $pathPieces = explode("/", $route['attributes']['arguments']['path']);
+            $pathPieces = $this->splitPath($route['attributes']['arguments']['path']);
             $isMatch = true;
 
             for($i = 0; $i < $this->pieces; $i++){
@@ -134,21 +199,11 @@ class Router{
 
                 if(str_starts_with($routePiece, '{') && str_ends_with($routePiece, '}')){
                     $paramParts = explode(":", substr($routePiece, 1, -1), 2);
-                    $paramName = $paramParts[0];
                     $expression = $paramParts[1] ?? null;
-                    if($expression){
-                        if(isset(self::$patterns[$expression])){
-                            $pattern = self::$patterns[$expression];
-                        } else {
-                            $pattern = '/' . $expression . '/';
-                        }
-                        set_error_handler(function() {}, E_WARNING);
-                        $isValidRegex = @preg_match($pattern, $urlPiece) !== false;
-                        restore_error_handler();
-                        if(!$isValidRegex || !preg_match($pattern, $urlPiece)){
-                            $isMatch = false;
-                            break;
-                        }
+                    // Regex inválida ou sem match → a rota não casa (preg_match devolve false/0)
+                    if($expression && @preg_match($this->resolvePattern($expression), $urlPiece) !== 1){
+                        $isMatch = false;
+                        break;
                     }
                 } else if ($routePiece !== $urlPiece){
                     $isMatch = false;
@@ -210,7 +265,7 @@ class Router{
      */
     private function extractUrlParameters(array $route, array $urlPieces): array{
         $fields = [];
-        $pathPieces = explode("/", $route['attributes']['arguments']['path']);
+        $pathPieces = $this->splitPath($route['attributes']['arguments']['path']);
         foreach($pathPieces as $key => $piece){
             if(str_starts_with($piece, '{') && str_ends_with($piece, '}')){
                 $paramName = explode(":", substr($piece, 1, -1))[0];
@@ -229,13 +284,14 @@ class Router{
         $className = $route['class'];
         $methodName = $route['name'];
 
-        if(!is_callable([new $className(), $methodName])){
+        // Uma única instância: o construtor lê e faz o parse do body
+        $controller = new $className();
+
+        if(!is_callable([$controller, $methodName])){
             throw new \Exception("Controller ou método não encontrado.", HttpStatusCode::NOT_FOUND->value);
         }
 
         try{
-            $controller = new $className();
-
             // Se a rota declarou docs.fields, valida os campos `required` antes de
             // executar o método — fonte única pra doc e validação, sem chamada manual.
             $docsFields = $route['attributes']['arguments']['docs']['fields'] ?? null;
@@ -244,10 +300,18 @@ class Router{
             }
 
             $response = call_user_func_array([$controller, $methodName], $this->fields);
-            $this->saveLoggin($_GET['_url'], $route, $response);
+            $this->saveLoggin($this->requestUrl(), $route, $response);
             return $response;
+        } catch (HttpResponseException $e){
+            // Resposta HTTP deliberada (ex.: validação de campos) — não é falha da rota
+            throw $e;
         } catch (\Exception $e){
-            // Opcional: Logar o erro $e
+            // Exceção com código 4xx explícito é intenção do controller: preserva status e mensagem
+            $code = $e->getCode();
+            if(is_int($code) && $code >= 400 && $code < 500){
+                throw $e;
+            }
+
             throw new \Exception("Erro ao executar a rota.", HttpStatusCode::INTERNAL_SERVER_ERROR->value, $e);
         }
     }
@@ -256,7 +320,33 @@ class Router{
 		return RequestParser::parseBody();
 	}
 
+	/**
+	 * Aplica CORS conforme settings.cors e responde o preflight (204) sem chegar às rotas.
+	 */
+	private function applyCors(array $config) : void{
+		$cors = Cors::resolve(
+			$config,
+			$_SERVER['HTTP_ORIGIN'] ?? null,
+			(string) $this->method,
+			$_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'] ?? null
+		);
+
+		foreach($cors['headers'] as $name => $value){
+			header($name . ': ' . $value);
+		}
+
+		if($cors['preflight']){
+			http_response_code(HttpStatusCode::NO_CONTENT->value);
+			exit;
+		}
+	}
+
 	public function handle(){
+		$corsConfig = \PSF::getConfig()->settings['cors'] ?? null;
+		if(!empty($corsConfig) && is_array($corsConfig)){
+			$this->applyCors($corsConfig);
+		}
+
 		$docsConfig = \PSF::getConfig()->settings['docsapi'] ?? null;
 
 		if($docsConfig){
@@ -264,7 +354,7 @@ class Router{
 			// (array com 'path', e opcionalmente 'username'/'password' pra exigir Basic Auth).
 			$docsPath = is_array($docsConfig) ? ($docsConfig['path'] ?? null) : $docsConfig;
 
-			if($docsPath && self::clearUrl($_GET['_url']) === $docsPath){
+			if($docsPath && self::clearUrl($this->requestUrl()) === $docsPath){
 				if(is_array($docsConfig) && !empty($docsConfig['username'])){
 					Http::requireBasicAuth($docsConfig['username'], $docsConfig['password'] ?? '', 'Documentação da API');
 				}

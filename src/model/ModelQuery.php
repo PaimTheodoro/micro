@@ -53,15 +53,49 @@ class ModelQuery
         return $this;
     }
 
-    public function innerJoin(array|string $table, string $query): ModelQuery
+    /**
+     * innerJoin(Product::class, 'Product.userId = User.id')              — forma original
+     * innerJoin([Product::class, 'p'], 'p.userId = User.id')             — alias via array
+     * innerJoin(Product::class, 'p', 'p.userId = User.id')               — alias em 3 argumentos
+     */
+    public function innerJoin(array|string $table, string $query, ?string $on = null): ModelQuery
     {
+        if ($on !== null) {
+            [$table, $query] = [[$table, $query], $on];
+        }
+
         $this->builder->addInnerJoin($table, $query);
         return $this;
     }
 
-    public function leftJoin(array|string|null $table, string $query): ModelQuery
+    /** Mesmas formas de innerJoin(); `$table` null aceita um join escrito por inteiro em `$query`. */
+    public function leftJoin(array|string|null $table, string $query, ?string $on = null): ModelQuery
     {
+        if ($on !== null) {
+            [$table, $query] = [[$table, $query], $on];
+        }
+
         $this->builder->addLeftJoin($table, $query);
+        return $this;
+    }
+
+    /**
+     * Dá um alias à entidade raiz (`FROM tabela AS o`); passa a valer como prefixo em qualquer
+     * referência: `o.status`, `Order::class.'.status'` e `Order::col('status')` resolvem para ele.
+     */
+    public function alias(string $alias): ModelQuery
+    {
+        $this->builder->setAlias($alias);
+        return $this;
+    }
+
+    /**
+     * Modo estrito para esta query (padrão: settings.strictQueries): referência que não resolve —
+     * classe inexistente, propriedade desconhecida, prefixo ambíguo — lança InvalidArgumentException.
+     */
+    public function strict(bool $strict = true): ModelQuery
+    {
+        $this->builder->setStrict($strict);
         return $this;
     }
 
@@ -136,35 +170,13 @@ class ModelQuery
 
     public function execute()
     {
-        $obj      = $this->builder->getObj();
-        $refClass = new \ReflectionClass($obj::class);
+        $obj = $this->builder->getObj();
 
-        foreach ($refClass->getProperties() as $property) {
-            $attributes    = $property->getAttributes();
-            $hasDeletedDate = false;
-            $columnName    = null;
-
-            foreach ($attributes as $attr) {
-                $attrName = method_exists($attr, 'getName') ? $attr->getName() : (property_exists($attr, 'name') ? $attr->name : null);
-
-                if ($attrName === ColumnDeletedDate::class || (is_object($attr) && $attr instanceof ColumnDeletedDate)) {
-                    $hasDeletedDate = true;
-                }
-
-                if ($attrName === Column::class || (is_object($attr) && $attr instanceof Column)) {
-                    if (method_exists($attr, 'getArguments')) {
-                        $args       = $attr->getArguments();
-                        $columnName = $args[0] ?? $args['name'] ?? null;
-                    } else {
-                        $columnName = $attr->name ?? null;
-                    }
-                }
-            }
-
-            if ($hasDeletedDate) {
-                $this->andWhere([$obj::class . '.' . $columnName, 'IS NULL']);
-                break;
-            }
+        // Soft delete como filtro obrigatório (AND por fora de where/orWhere) e idempotente
+        $softDeleteProp = MetadataCache::getSoftDeleteProp($obj::class);
+        if ($softDeleteProp !== null) {
+            // Nome solto = entidade raiz: inequívoco mesmo com self-join, alias e modo estrito
+            $this->builder->addSoftWhere('deleted_date', [$softDeleteProp, 'IS NULL']);
         }
 
         $query  = $this->builder->getQuery();
@@ -192,7 +204,7 @@ class ModelQuery
     public function sum(string $field): float
     {
         $this->builder->setLimit(1);
-        $this->builder->setFields(['SUM(' . $this->builder->generateField($field) . ') AS result']);
+        $this->builder->setFields(['SUM(' . $this->builder->compileField($field) . ') AS result']);
         $this->builder->setAsArray(true);
         $executeSelect = $this->execute();
 
@@ -223,7 +235,7 @@ class ModelQuery
 
         $obj         = $this->builder->getObj();
         $primaryKey  = Model::getPrimaryKey($obj::class);
-        $countField  = 'COUNT(' . $this->builder->generateField([$obj::class, $primaryKey[0]]) . ') OVER () AS totalItensFromPagination';
+        $countField  = 'COUNT(' . $this->builder->compileField([$obj::class, $primaryKey[0]]) . ') OVER () AS totalItensFromPagination';
         $this->builder->prependField($countField);
 
         $itens = $this->execute();
@@ -257,23 +269,30 @@ class ModelQuery
         return empty($callbackFunction) ? $result : call_user_func($callbackFunction, $result);
     }
 
-    public function query($query, $parseString = null, $database = 'default')
+    public function query($query, $parseString = null, $database = null)
     {
-        $fields = $this->builder->getQuery()['fields'];
+        $builderQuery = $this->builder->getQuery();
+        $fields       = $builderQuery['fields'];
+        // Sem este prefixo o SQL ficava "* FROM ..." (inválido em qualquer banco)
+        $verb         = !empty($builderQuery['startWith']) ? $builderQuery['startWith'] . ' ' : 'SELECT ';
 
         if (empty($fields)) {
-            $query = '* FROM ' . $this->builder->handleTableName() . ' ' . $query;
+            $query = $verb . '* FROM ' . $this->builder->handleFromClause() . ' ' . $query;
         } else {
             $fieldsQuery = implode(', ', $fields);
-            $query       = $fieldsQuery . ' FROM ' . $this->builder->handleTableName() . ' ' . $query;
+            $query       = $verb . $fieldsQuery . ' FROM ' . $this->builder->handleFromClause() . ' ' . $query;
         }
+
+        // Campos pendentes e referências no trecho livre (Order.id, o.status...) são traduzidos aqui
+        $query = $this->builder->resolveReferences($query);
 
         $stringParseString = (!empty($parseString) && is_array($parseString)) ? $parseString : null;
 
-        $obj  = $this->builder->getObj();
-        $Read = new \Psf\Database\Read($obj->databaseConnect ?? null);
+        $obj      = $this->builder->getObj();
+        $database = $database ?? MetadataCache::getDatabase($obj::class);
+        $Read     = new \Psf\Database\Read();
         $Read->exe(
-            $obj->table,
+            MetadataCache::getTable($obj::class),
             $query,
             $stringParseString,
             $database,

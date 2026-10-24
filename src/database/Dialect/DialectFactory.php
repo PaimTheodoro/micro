@@ -6,12 +6,21 @@ use Psf\Enumerators\DBDriver;
 
 class DialectFactory
 {
-    public static function make(DBDriver $driver): DialectInterface
+    /**
+     * Aceita a instância do enum ou o valor inteiro dele (configs legadas).
+     */
+    public static function make(DBDriver|int $driver): DialectInterface
     {
+        if (is_int($driver)) {
+            $driver = DBDriver::tryFrom($driver)
+                ?? throw new \InvalidArgumentException("Driver de banco desconhecido: {$driver}");
+        }
+
         return match($driver) {
             DBDriver::MySQL      => new MySQLDialect(),
             DBDriver::SQLServer  => new SQLServerDialect(),
             DBDriver::PostgreSQL => new PostgreSQLDialect(),
+            DBDriver::SQLite     => new SQLiteDialect(),
         };
     }
 
@@ -22,6 +31,6 @@ class DialectFactory
     public static function fromConfig(array $config): DialectInterface
     {
         $driver = !empty($config['driver']) ? $config['driver'] : DBDriver::MySQL;
-        return self::make($driver);
+        return self::make(is_numeric($driver) ? (int) $driver : $driver);
     }
 }

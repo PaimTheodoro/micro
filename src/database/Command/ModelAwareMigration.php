@@ -14,12 +14,18 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class ModelAwareMigration extends AbstractCommand{
     protected function configure(): void{
+        // Registra as opções padrão do Phinx (--configuration, --parser, ...) usadas pelo bootstrap()
+        parent::configure();
+
         $this->setName('make:migration-from-model')
              ->setDescription('Creates a new migration file by comparing a Model class with the current database state.')
              ->addArgument('model', InputArgument::REQUIRED, 'The fully qualified class name of the Model (e.g., App\\Models\\User).');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int{
+        // Carrega a config e o manager do Phinx (getManager()/getConfig() exigem bootstrap)
+        $this->bootstrap($input, $output);
+
         $className = $input->getArgument('model');
         if (!class_exists($className)) {
             $output->writeln("<error>Model class '{$className}' not found.</error>");
@@ -32,7 +38,7 @@ class ModelAwareMigration extends AbstractCommand{
         $columnsFromModel = MetadataCache::getColumnMap($className);
 
         // Obter o adaptador Phinx para o ambiente atual
-        $environment = $this->getManager()->getEnvironment($this->getManager()->getDefaultEnvironment());
+        $environment = $this->getManager()->getEnvironment($this->getConfig()->getDefaultEnvironment());
         /** @var \Phinx\Db\Adapter\AdapterInterface $adapter */
         $adapter = $environment->getAdapter();
         
@@ -160,6 +166,7 @@ class ModelAwareMigration extends AbstractCommand{
             'mysql'                 => DBDriver::MySQL,
             'pgsql', 'postgres'     => DBDriver::PostgreSQL,
             'sqlsrv', 'mssql', 'sqlserver' => DBDriver::SQLServer,
+            'sqlite'                => DBDriver::SQLite,
             default                 => DBDriver::MySQL,
         };
         return DialectFactory::make($driver);
@@ -218,21 +225,24 @@ class ModelAwareMigration extends AbstractCommand{
         // Precisamos criar um arquivo de migration customizado com o SQL gerado.
         // O Phinx não suporta isso diretamente, então vamos criar o arquivo manualmente.
 
-        $path = $this->getManager()->getMigrationPath();
+        // Manager não expõe o caminho; ele vem da config (paths.migrations)
+        $path = $this->getConfig()->getMigrationPaths()[0];
         if (!is_dir($path)) {
             mkdir($path, 0755, true);
         }
 
         // Formato do nome do arquivo: YYYYMMDDHHMMSS_migration_name.php
-        $filename = date('YmdHis') . '_' . \Phinx\Util\Util::camelcaseToUnderscore($migrationName) . '.php';
+        // toSnakeCase('UpdateNotaTable') devolve '_update_nota_table': o '_' inicial sobra
+        $filename = date('YmdHis') . '_' . ltrim(\Phinx\Util\Util::toSnakeCase($migrationName), '_') . '.php';
         $filepath = $path . DIRECTORY_SEPARATOR . $filename;
 
-        // Escapa as aspas para injetar no template
-        $upSqlEscaped = str_replace('"', '\"', $upSql);
-        $downSqlEscaped = str_replace('"', '\"', $downSql);
+        // Escapa aspas, barras e `$` para injetar o SQL numa string entre aspas duplas do template
+        $upSqlEscaped = addcslashes($upSql, '"\\$');
+        $downSqlEscaped = addcslashes($downSql, '"\\$');
 
-        $classNameForFile = \Phinx\Util\Util::mapClassNameToFileName($migrationName);
-        $classNameForFile = basename(str_replace('.php', '', $classNameForFile));
+        // O Phinx liga o arquivo `<timestamp>_snake_case.php` à classe `CamelCase` — o nome da
+        // classe é o próprio nome da migration (antes saía "2026..._snake_case", inválido em PHP)
+        $classNameForFile = $migrationName;
 
         $template = <<<PHP
 <?php

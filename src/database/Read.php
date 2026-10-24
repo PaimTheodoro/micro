@@ -2,6 +2,8 @@
 
 namespace Psf\Database;
 
+use Psf\Database\Dialect\DialectFactory;
+
 class Read extends Connect{
     private $select;
     private $places;
@@ -26,8 +28,9 @@ class Read extends Connect{
         }
         
         if($free == false){
-            $databaseName = \PSF::getConfig()->db[$database]['database'];
-            $this->select = "SELECT * FROM `{$databaseName}`.`{$table}` {$string}";
+            $configDb     = \PSF::getConfig()->db[$database];
+            $dialect      = DialectFactory::fromConfig($configDb);
+            $this->select = "SELECT * FROM " . $dialect->quoteTable((string) $table, $configDb['database']) . " {$string}";
         }else{
             if(empty($string)){
                 return false;
@@ -41,7 +44,7 @@ class Read extends Connect{
         $this->read = $this->connection->prepare($this->select);
         $this->read->setFetchMode(\PDO::FETCH_ASSOC);
 
-        if(in_array($table, parent::$tables[$database]) || $table === NULL || str_starts_with($table, 'v_') || str_starts_with($table, 'view_')){
+        if($table === NULL || str_starts_with($table, 'v_') || str_starts_with($table, 'view_') || parent::verifyTableExist($table, $database)){
             $this->execute();
             return $this;
         }else{
@@ -54,6 +57,12 @@ class Read extends Connect{
     }
     
     public function getRowCount() {
+        // PDOStatement::rowCount() não é confiável em SELECT (SQLite devolve 0, SQL Server -1):
+        // o resultado já foi buscado por completo, então contá-lo funciona em qualquer driver.
+        if(is_array($this->result)){
+            return count($this->result);
+        }
+
         return $this->read->rowCount();
     }
     

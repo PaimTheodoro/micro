@@ -19,33 +19,52 @@ class CloudStorage{
 			];
 
 			try {
-				$s3Client = new S3Client($options);
-			} catch (Exception $e) {
+				return new S3Client($options);
+			} catch (\Throwable $e) {
 				return false;
 			}
 		}
 
-		return $s3Client;
-	} 
+		// Provider não suportado
+		return false;
+	}
 
 	public static function putObject(S3Client $connect, string $filename, $atualpath, string $acl = 'public-read', string $filetype = 'binary'){
 		$configAws = \PSF::getConfig()->aws;
 
 		if(strtoupper($configAws['provider']) == 'R2'){
+			$isPath = $filetype == 'path';
+			$stream = $isPath ? @fopen($atualpath, 'r') : null;
+
+			if($isPath && $stream === false){
+				return false;
+			}
+
 			try {
+			    // `mime_content_type` espera um caminho; para conteúdo em memória usa o finfo sobre o buffer
+			    $contentType = $isPath
+			    	? mime_content_type($atualpath)
+			    	: (new \finfo(FILEINFO_MIME_TYPE))->buffer((string) $atualpath);
+
 			    $put = $connect->putObject([
 			        'Bucket' 		=> $configAws['bucket'],
 			        'Key'    		=> $filename,
-			        'Body'   		=> $filetype == 'path' ? fopen($atualpath, 'r') : $atualpath,
+			        'Body'   		=> $isPath ? $stream : $atualpath,
 			        'ACL'    		=> $acl,
-			        'ContentType' 	=> mime_content_type($atualpath)
+			        'ContentType' 	=> $contentType ?: 'application/octet-stream'
 			    ]);
 
 			    return $put;
 			} catch (\Aws\S3\Exception\S3Exception $e) {
 			    return false;
+			} finally {
+				if(is_resource($stream)){
+					fclose($stream);
+				}
 			}
 		}
+
+		return false;
 	}
 
 	public static function getObject(S3Client $connect, string $filename, string $saveTo){
@@ -64,6 +83,8 @@ class CloudStorage{
 				return false;
 			}
 		}
+
+		return false;
 	}
 
 	public static function listObjects(S3Client $connect, ?string $continuationToken = NULL, int $maxKeys = 1000): array{
@@ -115,9 +136,11 @@ class CloudStorage{
 		        ));
 		        return true;
 		    } catch (\Aws\S3\Exception\S3Exception $e) {
-		    	echo $e->getMessage();
+		    	// Sem echo: a mensagem do SDK quebraria o JSON da resposta e vazaria detalhes
 		    	return false;
 		    }
 		}
+
+		return false;
 	}
 }

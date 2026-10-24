@@ -59,5 +59,26 @@
     define('PHINX_CONFIG_FILE', $frameworkDir . '/phinx.php');
 
     // Carrega e executa a aplicação CLI do Phinx do projeto principal
-    require_once $home . '/vendor/robmorgan/phinx/bin/phinx';
+    $phinxBin = $home . '/vendor/robmorgan/phinx/bin/phinx';
+    $phinxApp = $home . '/vendor/robmorgan/phinx/app/phinx.php';
+    if (!file_exists($phinxBin)) {
+        echo "Erro: robmorgan/phinx não está instalado neste projeto.\n";
+        echo "Instale com: composer require robmorgan/phinx\n";
+        exit(1);
+    }
+
+    if (file_exists($phinxApp)) {
+        // O Phinx não registra comandos customizados via configuração: instanciamos a aplicação
+        // e adicionamos os comandos do PSF antes de executar.
+        $app = require $phinxApp;
+        $app->addCommands([
+            new \Psf\Database\Command\ModelAwareMigration(),
+            new \Psf\Database\Command\ModelGenerator(),
+            new \Psf\Database\Command\TableAnalyzer(),
+        ]);
+        $app->run();
+    } else {
+        // Versões antigas do Phinx: executa o binário padrão (sem os comandos do PSF)
+        require_once $phinxBin;
+    }
 })(); 

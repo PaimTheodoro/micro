@@ -15,7 +15,11 @@ class ModelGenerator extends AbstractCommand
 
     protected function configure(): void
     {
+        // Registra as opções padrão do Phinx (--configuration, --parser, ...) usadas pelo bootstrap()
+        parent::configure();
+
         $this
+            ->setName('make:model-from-table')
             ->setDescription('Gera um modelo PSF (com PHP 8 Attributes) a partir de uma tabela do banco de dados')
             ->addArgument('table', InputArgument::REQUIRED, 'Nome da tabela no banco de dados')
             ->addArgument('class', InputArgument::REQUIRED, 'Nome completo da classe do modelo (ex: App\\Models\\User\\User)')
@@ -24,12 +28,15 @@ class ModelGenerator extends AbstractCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // Carrega a config do Phinx (getConfig() lança "No config set yet" sem isto)
+        $this->bootstrap($input, $output);
+
         $io        = new SymfonyStyle($input, $output);
         $tableName = $input->getArgument('table');
         $className = $input->getArgument('class');
 
         try {
-            $adapter = $this->getConfig()
+            $adapter = $this->getManager()
                             ->getEnvironment($this->getConfig()->getDefaultEnvironment())
                             ->getAdapter();
 

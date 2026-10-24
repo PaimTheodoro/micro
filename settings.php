@@ -58,15 +58,20 @@ if(!function_exists('getallheaders')){
 }
 
 function explodeException($error){
-    if (php_sapi_name() === 'cli') { var_dump($error->getMessage()); }
-    // if(isset(\PSF::getConfig()->settings['debug']) && \PSF::getConfig()->settings['debug']){
+    // Detalhes internos (mensagem, arquivo, linha) só são expostos com settings.debug = true
+    $debug = (bool) \PSF::config('settings', 'debug');
+
+    error_log(sprintf('[PSF] %s em %s:%d', $error->getMessage(), $error->getFile(), $error->getLine()));
+
+    if($debug){
+        if (php_sapi_name() === 'cli') { var_dump($error->getMessage()); }
         Http::response("Erro na execução da tarefa! Por favor, contacte o suporte.", [
             'code'  => $error->getCode(),
             'msg'   => $error->getMessage(),
             'file'  => $error->getFile(),
             'line'  => $error->getLine()
         ], 500);
-    // }else{
-        // Http::response('Erro na execução da tarefa! Por favor, contacte o suporte.', [], 500);
-    // }
+    }else{
+        Http::response('Erro na execução da tarefa! Por favor, contacte o suporte.', [], 500);
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace Psf\Database;
 
+use Psf\Database\Dialect\DialectFactory;
+
 class Delete extends Connect{
     private $table;
     private $terms;
@@ -14,9 +16,7 @@ class Delete extends Connect{
     public static function exe($table, $terms, $parseString = '', $database = 'default', array $termsParams = []){
         $obj = new Delete;
 
-        if(empty(self::$connection)){
-            $obj->connection = parent::getConnection($database);
-        }
+        $obj->connection = parent::getConnection($database);
 
         $obj->table = (string) $table;
         $obj->terms = (string) $terms;
@@ -24,7 +24,8 @@ class Delete extends Connect{
         if(self::verifyTableExist($table, $database)){
             parse_str($parseString, $obj->places);
 
-            $obj->delete = "DELETE FROM {$obj->table} {$obj->terms}";
+            $dialect = DialectFactory::fromConfig(\PSF::getConfig()->db[$database]);
+            $obj->delete = "DELETE FROM " . $dialect->quoteIdentifier($obj->table) . " {$obj->terms}";
 
             try{
                 $obj->delete = $obj->connection->prepare($obj->delete);
@@ -47,7 +48,7 @@ class Delete extends Connect{
     }
     
     public function getResult(){
-        return $this->delete;
+        return $this->result;
     }
     
     public function getRowCount(){

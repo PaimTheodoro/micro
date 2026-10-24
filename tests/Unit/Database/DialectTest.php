@@ -120,7 +120,7 @@ $config = [
 
 it('MySQL buildDsn produces correct DSN string', function () use ($config) {
     $dsn = (new MySQLDialect())->buildDsn($config);
-    expect($dsn)->toBe('mysql:host=localhost;dbname=testdb;port=3306;charset=utf8');
+    expect($dsn)->toBe('mysql:host=localhost;dbname=testdb;port=3306;charset=utf8mb4');
 });
 
 it('PostgreSQL buildDsn produces correct DSN string', function () use ($config) {
@@ -225,4 +225,48 @@ it('SQLServer addColumnSql omits COLUMN keyword', function () {
 it('PostgreSQL addColumnSql uses ADD COLUMN with double quotes', function () {
     expect((new PostgreSQLDialect())->addColumnSql('email', 'VARCHAR(255) NOT NULL'))
         ->toBe('ADD COLUMN "email" VARCHAR(255) NOT NULL');
+});
+
+// ---------------------------------------------------------------------------
+// SQLite, config legada e escaping
+// ---------------------------------------------------------------------------
+
+it('DialectFactory builds the SQLite dialect', function () {
+    expect(DialectFactory::make(DBDriver::SQLite))->toBeInstanceOf(\Psf\Database\Dialect\SQLiteDialect::class);
+});
+
+it('DialectFactory accepts the raw int of a legacy config', function () {
+    expect(DialectFactory::fromConfig(['driver' => 3]))->toBeInstanceOf(PostgreSQLDialect::class);
+    expect(DialectFactory::fromConfig(['driver' => '2']))->toBeInstanceOf(SQLServerDialect::class);
+    expect(fn() => DialectFactory::make(99))->toThrow(InvalidArgumentException::class);
+});
+
+it('SQLite dialect quotes, paginates and builds its DSN', function () {
+    $d = new \Psf\Database\Dialect\SQLiteDialect();
+
+    expect($d->quoteTable('users', 'ignored'))->toBe('"users"');
+    expect($d->limitOffsetClause(10, 20))->toBe(' LIMIT 10 OFFSET 20');
+    expect($d->limitOffsetClause(null, 5))->toBe(' LIMIT -1 OFFSET 5');
+    expect($d->buildDsn(['database' => ':memory:']))->toBe('sqlite::memory:');
+    expect(fn() => $d->modifyColumnSql('a', 'INT'))->toThrow(LogicException::class);
+});
+
+it('quoteTable escapes the quote character in every dialect', function () {
+    expect((new MySQLDialect())->quoteTable('a`b', 'd`b'))->toBe('`d``b`.`a``b`');
+    expect((new PostgreSQLDialect())->quoteTable('a"b', 'd"b'))->toBe('"d""b"."a""b"');
+    expect((new SQLServerDialect())->quoteTable('a]b', 'd]b'))->toBe('[d]]b].[dbo].[a]]b]');
+});
+
+it('column DDL helpers escape the column name', function () {
+    expect((new MySQLDialect())->addColumnSql('a`b', 'INT'))->toBe('ADD COLUMN `a``b` INT');
+    expect((new MySQLDialect())->modifyColumnSql('a`b', 'INT'))->toBe('MODIFY COLUMN `a``b` INT');
+    expect((new PostgreSQLDialect())->modifyColumnSql('a"b', 'INT'))->toBe('ALTER COLUMN "a""b" TYPE INT');
+    expect((new SQLServerDialect())->addColumnSql('a]b', 'INT'))->toBe('ADD [a]]b] INT');
+});
+
+it('buildDsn accepts host as an alias of hostname', function () {
+    expect((new MySQLDialect())->buildDsn(['host' => 'db1', 'database' => 'x']))
+        ->toBe('mysql:host=db1;dbname=x;port=3306;charset=utf8mb4');
+    expect((new PostgreSQLDialect())->buildDsn(['host' => 'db1', 'database' => 'x']))
+        ->toBe('pgsql:host=db1;port=5432;dbname=x');
 });

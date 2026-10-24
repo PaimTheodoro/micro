@@ -18,35 +18,44 @@ class Update extends Connect{
         $configDb   = \PSF::getConfig()->db;
         $obj        = new Update;
 
-        if(empty(self::$connection)){
-            $obj->connection = parent::getConnection($database);
-        }
+        $obj->connection = parent::getConnection($database);
 
         $obj->table = (string) $table;
         $obj->data = $data;
         $obj->terms = $terms;  
 
         if(self::verifyTableExist($table, $database)){
+            if(empty($obj->data)){
+                throw new \InvalidArgumentException('Update sem colunas para atualizar');
+            }
+
             $dialect = DialectFactory::fromConfig($configDb[$database]);
 
-            if(!empty($parseString) && !empty($obj->places)){
+            if(!empty($parseString)){
                 parse_str($parseString, $obj->places);
             }else{
                 $obj->places = [];
             }
 
+            // Placeholders posicionais por índice: o nome da coluna (que pode vir de input) nunca
+            // entra no SQL como parâmetro — só como identificador, já escapado pelo dialeto.
+            $places = [];
+            $setParams = [];
+            $index = 0;
             foreach($obj->data as $key => $value) {
-                $places[] = $dialect->quoteIdentifier($key) . ' = :' . $key;
+                $placeholder = '__set_' . $index++;
+                $places[] = $dialect->quoteIdentifier((string) $key) . ' = :' . $placeholder;
+                $setParams[$placeholder] = $value;
             }
             $places = implode(', ', $places);
 
             $quotedTable = $dialect->quoteIdentifier($obj->table);
             $obj->update = "UPDATE {$quotedTable} SET {$places} {$obj->terms}";
-
-            $obj->update = $obj->connection->prepare($obj->update);
         
             try{
-                $obj->update->execute(array_merge($obj->data, $obj->places, $termsParams));
+                // prepare() dentro do try: drivers como o SQLite validam o SQL já no prepare
+                $obj->update = $obj->connection->prepare($obj->update);
+                $obj->update->execute(array_merge($setParams, $obj->places, $termsParams));
                 $obj->result = true;
 
                 return $obj;

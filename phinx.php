@@ -1,7 +1,8 @@
 <?php
 
 // phinx.php - Arquivo de configuração para o Phinx.
-// Este arquivo é carregado pelo nosso wrapper `bin/phinx`, que já inicializou o framework.
+// Este arquivo é carregado pelo nosso wrapper `bin/phinx`, que já inicializou o framework
+// e registra os comandos do PSF (make:migration-from-model, make:model-from-table, analyze:table-vs-model).
 
 // Recupera as configurações de banco de dados do framework
 $dbConfigs = \PSF::config('db');
@@ -35,20 +36,44 @@ foreach ($dbConfigs as $envName => $config) {
     $driver = $config['driver'] ?? null;
     $database = $config['database'] ?? null;
 
-    if (empty($driver) || empty($host) || empty($user) || !isset($pass) || empty($database)) {
+    if (empty($driver) || empty($database)) {
         continue;
     }
 
+    $adapter = $driverToAdapter($driver);
+
+    // SQLite é um arquivo (ou :memory:) — não tem host nem credenciais
+    if ($adapter === 'sqlite') {
+        $environments[$envName] = [
+            'adapter' => 'sqlite',
+            'name'    => $database,
+            'suffix'  => $config['suffix'] ?? '',
+        ];
+        continue;
+    }
+
+    if (empty($host) || empty($user) || !isset($pass)) {
+        continue;
+    }
+
+    // Porta e charset padrão dependem do driver (antes: 3306/utf8 para todos)
+    $defaults = match ($adapter) {
+        'pgsql'  => ['port' => 5432, 'charset' => 'utf8',    'collation' => null],
+        'sqlsrv' => ['port' => 1433, 'charset' => 'utf8',    'collation' => null],
+        default  => ['port' => 3306, 'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci'],
+    };
+
     $environments[$envName] = [
-        'adapter'      => $driverToAdapter($driver),
+        'adapter'      => $adapter,
         'host'         => $host,
         'name'         => $database,
         'user'         => $user,
         'pass'         => $pass,
-        'port'         => $config['port'] ?? 3306,
-        'charset'      => $config['charset'] ?? 'utf8',
-        'collation'    => $config['collation'] ?? 'utf8_unicode_ci',
-    ];
+        'port'         => $config['port'] ?? $defaults['port'],
+        'charset'      => $config['charset'] ?? $defaults['charset'],
+    ] + (($config['collation'] ?? $defaults['collation']) !== null
+        ? ['collation' => $config['collation'] ?? $defaults['collation']]
+        : []);
 }
 
 if (empty($environments)) {
@@ -64,11 +89,6 @@ return [
         // Salva migrations/seeds no projeto consumidor, não dentro do vendor do framework.
         'migrations' => $projectRoot . '/db/migrations',
         'seeds' => $projectRoot . '/db/seeds'
-    ],
-    'commands' => [
-        'Psf\\Database\\Command\\ModelAwareMigration',
-        'Psf\\Database\\Command\\ModelGenerator',
-        'Psf\\Database\\Command\\TableAnalyzer',
     ],
     'environments' => [
         'default_migration_table' => 'phinxlog',

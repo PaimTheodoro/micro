@@ -20,9 +20,7 @@ class Create extends Connect{
 
         $obj = new Create;
 
-        if(empty(self::$connection)){
-            $obj->connection = parent::getConnection($database);
-        }
+        $obj->connection = parent::getConnection($database);
 
         $obj->table = (String) $table;
         $obj->data = $data;

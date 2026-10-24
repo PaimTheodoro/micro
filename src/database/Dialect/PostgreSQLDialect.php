@@ -13,9 +13,9 @@ class PostgreSQLDialect implements DialectInterface
     public function quoteTable(string $table, ?string $database = null): string
     {
         if ($database !== null) {
-            return '"' . $database . '"."' . $table . '"';
+            return $this->quoteIdentifier($database) . '.' . $this->quoteIdentifier($table);
         }
-        return '"' . $table . '"';
+        return $this->quoteIdentifier($table);
     }
 
     public function topClause(?int $limit, ?int $offset): string
@@ -70,7 +70,7 @@ class PostgreSQLDialect implements DialectInterface
 
     public function buildDsn(array $config): string
     {
-        $host = $config['hostname'];
+        $host = $config['hostname'] ?? $config['host'];
         $db   = $config['database'];
         $port = $config['port'] ?? 5432;
         return "pgsql:host={$host};port={$port};dbname={$db}";
@@ -88,11 +88,11 @@ class PostgreSQLDialect implements DialectInterface
 
     public function addColumnSql(string $column, string $definition): string
     {
-        return 'ADD COLUMN "' . $column . '" ' . $definition;
+        return 'ADD COLUMN ' . $this->quoteIdentifier($column) . ' ' . $definition;
     }
 
     public function modifyColumnSql(string $column, string $definition): string
     {
-        return "ALTER COLUMN \"{$column}\" TYPE {$definition}";
+        return 'ALTER COLUMN ' . $this->quoteIdentifier($column) . ' TYPE ' . $definition;
     }
 }

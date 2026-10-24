@@ -3,6 +3,7 @@
 namespace Tests\Fixtures\Models;
 
 use Psf\Model\Model;
+use Psf\Model\ModelTrait;
 use Psf\Model\Attributes\Column;
 use Psf\Model\Attributes\ColumnCreatedDate;
 use Psf\Model\Attributes\ColumnUpdatedDate;
@@ -14,6 +15,8 @@ use Psf\Model\Attributes\Type;
 #[Table('fake_products')]
 class FakeProductModel extends Model
 {
+    use ModelTrait;
+
     #[PrimaryKey]
     #[Column('id')]
     #[Type('INT UNSIGNED AUTO_INCREMENT')]

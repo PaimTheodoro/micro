@@ -15,3 +15,6 @@ require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 // Inicializa o PSF com o config de teste (JWT secret, DB stub, etc.)
 PSF::init(['config' => __DIR__ . '/Fixtures/config.php']);
+
+// Faz Http::response() lançar HttpResponseException em vez de echo + exit
+define('PSF_TESTING', true);

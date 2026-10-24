@@ -19,15 +19,8 @@ class Model{
 		}
 	}
 
-	private static function isAttributeType($attribute, string $type): bool {
-		$className = $attribute->getName();
-		return substr_compare($className, $type, -strlen($type)) === 0 || $className === $type;
-	}
-
 	private static function findAttributeByType($attributes, string $type) {
-		return array_values(array_filter($attributes, function($attr) use ($type) {
-			return self::isAttributeType($attr, $type);
-		}));
+		return MetadataCache::findAttributeByType($attributes, $type);
 	}
 
 	public function getPrimarysKeys(){
@@ -106,8 +99,11 @@ class Model{
 			$configDb2 = \PSF::getConfig()->db[Model::getDatabase($this)];
 			$dialect   = DialectFactory::fromConfig($configDb2);
 			$table     = Model::getTable($this);
+			// O valor é escapado pelo driver (PDO::quote) — nunca concatenado cru no SQL.
+			// Para novos usos prefira getPrimaryBindings(), que usa placeholders.
+			$pdo       = Connect::getConnection(Model::getDatabase($this));
 			$parts     = array_map(
-				fn($item) => $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier(MetadataCache::getColumnByProp($this::class, $item) ?: $item) . ' = ' . $this->{$item},
+				fn($item) => $dialect->quoteIdentifier($table) . '.' . $dialect->quoteIdentifier(MetadataCache::getColumnByProp($this::class, $item) ?: $item) . ' = ' . $pdo->quote((string) $this->{$item}),
 				$primarys
 			);
 			return match (true) {
@@ -138,9 +134,8 @@ class Model{
 		);
 
 		if(!empty($Create)){
-			if(property_exists($this::class, 'id')){
-				$this->id = $Create->getResult();
-			}
+			// assign() só preenche `id` se o model declarar essa propriedade
+			$this->assign(['id' => $Create->getResult()]);
 
 			return TRUE;
 		}
@@ -259,20 +254,24 @@ class Model{
 	}
 
 	public function getIdentityColumn(){
-		$configDb = \PSF::getConfig()->db[Model::getDatabase($this)];
+		$database = Model::getDatabase($this);
+		$configDb = \PSF::getConfig()->db[$database];
 
-		$driver 	= !empty($configDb['driver']) ? $configDb['driver'] : DBDriver::MySQL;
+		$driver = $configDb['driver'] ?? DBDriver::MySQL;
+		if(!$driver instanceof DBDriver){
+			$driver = DBDriver::tryFrom((int) $driver) ?? DBDriver::MySQL;
+		}
 
 		$query = match ($driver) {
-			DBDriver::SQLServer => "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" . $this->table . "' AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1",
+			DBDriver::SQLServer => "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = :table AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1",
 			default             => null,
 		};
 
 		if ($query !== null) {
-			$statement = $db->prepare($query);
+			$statement = Connect::getConnection($database)->prepare($query);
 
 			try{
-	            $statement->execute();
+	            $statement->execute(['table' => Model::getTable($this)]);
 	            $coluns = $statement->fetchAll(\PDO::FETCH_ASSOC);
 
 	            if($coluns){

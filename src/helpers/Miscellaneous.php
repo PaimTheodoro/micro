@@ -33,7 +33,7 @@ class Miscellaneous{
 				if(is_file(__DIR__ . "/../storage/" . $fileName)){
 					$yearHolidays = json_decode(file_get_contents(__DIR__ . "/../storage/" . $fileName), true) ?? [];
 				}else{
-					$Apis = new \Porglin\Pgf\Helpers\Apis;
+					$Apis = new \Psf\Helper\Apis;
 					$getHolidays = $Apis->BrasilApiHolidays(date("Y", strtotime($nextDay)));
 
 					if($getHolidays != false){

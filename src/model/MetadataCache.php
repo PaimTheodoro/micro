@@ -18,18 +18,35 @@ class MetadataCache{
     private static array $cache = [];
 
     /**
-     * Verifica se um atributo é do tipo especificado
+     * @var array<string, string> Versão (mtime do arquivo da classe) usada na chave do APCu,
+     * para que um deploy invalide os metadados antigos em vez de servi-los até o TTL.
+     */
+    private static array $classVersions = [];
+
+    private static function apcuKey(string $class, string $key): string
+    {
+        if (!isset(self::$classVersions[$class])) {
+            $file = class_exists($class) ? (new \ReflectionClass($class))->getFileName() : false;
+            self::$classVersions[$class] = $file !== false ? (string) @filemtime($file) : '0';
+        }
+
+        return 'psf_meta_' . md5($class . '|' . self::$classVersions[$class]) . '_' . $key;
+    }
+
+    /**
+     * Verifica se um atributo é do tipo especificado (pelo sufixo do nome da classe,
+     * para aceitar tanto `Column` quanto `Psf\Model\Attributes\Column`).
      */
     private static function isAttributeType($attribute, string $type): bool {
         $className = $attribute->getName();
-        // Usa substr_compare para compatibilidade com PHP < 8.0
         return substr_compare($className, $type, -strlen($type)) === 0 || $className === $type;
     }
 
     /**
-     * Encontra um atributo do tipo especificado
+     * Filtra os atributos (ReflectionAttribute[]) do tipo especificado.
+     * Implementação única — Model, ModelSerializer e ModelHydrator delegam para cá.
      */
-    private static function findAttributeByType($attributes, string $type) {
+    public static function findAttributeByType($attributes, string $type): array {
         return array_values(array_filter($attributes, function($attr) use ($type) {
             return self::isAttributeType($attr, $type);
         }));
@@ -42,13 +59,14 @@ class MetadataCache{
     private static function fetch(string $class, string $key, callable $producer): mixed
     {
         // L1 — memória da requisição atual (instantâneo, sem serialização)
-        if (isset(self::$cache[$class][$key])) {
+        // array_key_exists (não isset) para que resultados null/false também sejam cacheados
+        if (isset(self::$cache[$class]) && array_key_exists($key, self::$cache[$class])) {
             return self::$cache[$class][$key];
         }
 
         // L2 — APCu cross-request (quando disponível e habilitado)
         $apcu        = extension_loaded('apcu') && apcu_enabled();
-        $apcuKey     = 'psf_meta_' . md5($class) . '_' . $key;
+        $apcuKey     = $apcu ? self::apcuKey($class, $key) : '';
 
         if ($apcu) {
             $value = apcu_fetch($apcuKey, $success);
@@ -106,6 +124,52 @@ class MetadataCache{
     }
 
     /**
+     * Plano de hidratação: uma entrada por propriedade da classe (mesma ordem e conjunto de
+     * ReflectionClass::getProperties()), com o que serializer/hydrator precisam por linha —
+     * assim a Reflection roda uma vez por classe, não uma vez por linha de resultado.
+     *
+     * @return list<array{prop: string, hasColumn: bool, column: ?string, static: bool}>
+     */
+    public static function getPropertyPlan(string $class): array {
+        return self::fetch($class, 'property_plan', function () use ($class) {
+            $plan = [];
+            foreach ((new \ReflectionClass($class))->getProperties() as $property) {
+                $column  = self::findAttributeByType($property->getAttributes(), 'Column');
+                $colName = null;
+                if (!empty($column)) {
+                    $args    = $column[0]->getArguments();
+                    $colName = $args[0] ?? $args['name'] ?? null;
+                }
+
+                $plan[] = [
+                    'prop'      => $property->getName(),
+                    'hasColumn' => !empty($column),
+                    'column'    => $colName,
+                    'static'    => $property->isStatic(),
+                ];
+            }
+            return $plan;
+        });
+    }
+
+    /**
+     * Nome da propriedade mapeada para uma coluna (a primeira, se houver duplicidade), ou false.
+     */
+    public static function getPropByColumn(string $class, string $column): string|false {
+        $reverse = self::fetch($class, 'column_to_prop', function () use ($class) {
+            $map = [];
+            foreach (self::getPropertyPlan($class) as $entry) {
+                if ($entry['column'] !== null && !isset($map[$entry['column']])) {
+                    $map[$entry['column']] = $entry['prop'];
+                }
+            }
+            return $map;
+        });
+
+        return $reverse[$column] ?? false;
+    }
+
+    /**
      * Obtém todo o mapa de colunas para uma classe, usando o cache.
      * Retorna ['nomeDaPropriedade' => 'nome_da_coluna_no_banco'].
      */
@@ -120,6 +184,20 @@ class MetadataCache{
         return self::fetch($class, 'primary_key', fn() => Model::getPrimaryKey($class));
     }
     
+    /**
+     * Nome da PROPRIEDADE marcada com #[ColumnDeletedDate] (soft delete), ou null se o model não usa.
+     */
+    public static function getSoftDeleteProp(string $class): ?string{
+        return self::fetch($class, 'soft_delete_prop', function () use ($class) {
+            foreach ((new \ReflectionClass($class))->getProperties() as $property) {
+                if (!empty(self::findAttributeByType($property->getAttributes(), 'ColumnDeletedDate'))) {
+                    return $property->getName();
+                }
+            }
+            return null;
+        });
+    }
+
     /**
      * Obtém o nome do banco de dados para uma classe, usando o cache se disponível.
      */
@@ -272,19 +350,20 @@ class MetadataCache{
             if ($apcu) {
                 // Limpa todas as entradas APCu daquela classe
                 foreach (array_keys(self::$cache[$class] ?? []) as $key) {
-                    apcu_delete('psf_meta_' . md5($class) . '_' . $key);
+                    apcu_delete(self::apcuKey($class, $key));
                 }
             }
-            unset(self::$cache[$class]);
+            unset(self::$cache[$class], self::$classVersions[$class]);
         } else {
             if ($apcu) {
                 foreach (self::$cache as $cls => $keys) {
                     foreach (array_keys($keys) as $key) {
-                        apcu_delete('psf_meta_' . md5($cls) . '_' . $key);
+                        apcu_delete(self::apcuKey($cls, $key));
                     }
                 }
             }
             self::$cache = [];
+            self::$classVersions = [];
         }
     }
 } 

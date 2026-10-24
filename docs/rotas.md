@@ -50,6 +50,34 @@ Também é possível usar regex inline diretamente na rota, por exemplo:
 #[Router(path: '/produtos/{codigo:/^[A-Z]{3}-\d{4}$/}')]
 ```
 
+Expressões sem delimitador (`{n:\d+}`) são ancoradas (`^...$`) — não casam por substring. Regex inválida faz a rota não casar. O prefixo de versão aceita qualquer quantidade de dígitos (`v1`, `v12`, ...).
+
+### Erros nos controllers
+
+- `HttpResponseException` (resposta HTTP deliberada) passa direto.
+- Uma exceção com código 4xx explícito (`throw new \Exception('Sem permissão', 403)`) mantém status e mensagem.
+- Qualquer outra exceção vira 500 "Erro ao executar a rota." (a original fica em `getPrevious()`).
+
+### CORS
+
+Configure `settings.cors` para liberar origens e responder o preflight (`OPTIONS`) com 204:
+
+```php
+'settings' => [
+    'cors' => [
+        'origins'     => ['https://app.exemplo.com'], // ou '*'; padrão: nenhuma origem
+        'methods'     => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        'headers'     => ['Content-Type', 'Authorization'],
+        'credentials' => false, // com true, '*' devolve a origem da requisição
+        'max_age'     => 600,
+    ],
+],
+```
+
+### Cache de rotas
+
+Com APCu, as rotas ficam em cache (`prd`: chave estática por app, TTL de 1h; `dev`: invalidado pelo mtime dos arquivos). No deploy em `prd`, chame `(new \Psf\Http\RouteCacheManager())->clear()`.
+
 ### Execução
 
 O roteador (`Psf\Http\Router`) resolve a rota, executa middlewares e despacha para o método do controller. 

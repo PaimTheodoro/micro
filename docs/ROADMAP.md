@@ -9,8 +9,8 @@
 ## Contexto do projeto
 
 **Framework:** PSF (psf/framework) — micro-framework PHP próprio para APIs  
-**Versão atual:** 0.0.10  
-**PHP mínimo:** 8.0 (na prática 8.1+ recomendado)  
+**Versão atual:** ver tags do git e o `CHANGELOG.md`  
+**PHP mínimo:** 8.1 (o código usa enums nativos)  
 **Bancos suportados hoje:** MySQL, SQL Server (parcial) — PostgreSQL no enum mas sem implementação real  
 **Autor:** Theodoro Paim  
 **Repositório local:** `c:/laragon/www/framework`
@@ -396,7 +396,7 @@ class DialectFactory {
             DBDriver::MySQL      => new MySQLDialect(),
             DBDriver::SQLServer  => new SQLServerDialect(),
             DBDriver::PostgreSQL => new PostgreSQLDialect(),
-            DBDriver::SQLite     => new SQLiteDialect(), // futuro
+            DBDriver::SQLite     => new SQLiteDialect(), // implementado
         };
     }
 }
@@ -839,7 +839,8 @@ Itens identificados que não se encaixam em nenhuma fase mas devem ser endereça
 | 2026-04-16 | Manter `StatusCode` como classe + criar `HttpStatusCode` enum | Migração gradual sem breaking — projetos existentes usam `StatusCode::OK` como constante |
 | 2026-04-16 | `Http::request()` deprecado mas não removido | Retrocompatibilidade — projetos existentes podem estar usando |
 | 2026-04-17 | Usar Pest v3 em vez de PHPUnit puro | Sintaxe mais expressiva (closures estilo Jest), mutation testing nativo, mesma engine por baixo |
-| 2026-04-17 | Testes unitários usam MySQL como stub de config; DB não é conectado | SQLite não é suportado no Connect.php; unidades que precisam de DB mocam PDO diretamente |
+| 2026-04-17 | Testes unitários usam MySQL como stub de config; DB não é conectado | Unidades que precisam de DB mocam PDO diretamente (decisão original: SQLite ainda não era suportado) |
+| 2026-10-24 | `SQLiteDialect` adicionado; `tests/Integration` roda contra SQLite `:memory:` (sem servidor de banco) | Permite testar CRUD, transações e query builder de verdade no CI |
 
 ---
 
