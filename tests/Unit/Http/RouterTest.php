@@ -5,6 +5,7 @@ use Psf\Http\Router;
 use Psf\Monitor\Config;
 use Psf\Monitor\Monitor;
 use Tests\Fixtures\Controllers\FakeController;
+use Tests\Fixtures\Http\FakeRequestLogger;
 
 function makeRouter(array $routes, string $method = 'GET'): Router
 {
@@ -170,6 +171,53 @@ it('redacts credentials from the headers handed to the request logger', function
 
     expect($headers['Authorization'])->toBe('[redacted]');
     expect($headers['X-Trace'])->toBe('abc');
+});
+
+function loggedRoute(): array
+{
+    $route = route('/ping', 'ok');
+    $route['attributes']['arguments']['middlewares'] = ['loggin'];
+
+    return $route;
+}
+
+it('hands the request logger the masked headers, not the raw ones', function () {
+    monitorUseConfig([], ['settings' => ['logrequest' => [FakeRequestLogger::class, 'log']]]);
+    FakeRequestLogger::$last = null;
+
+    $_SERVER['HTTP_AUTHORIZATION']       = 'Bearer segredo';
+    $_SERVER['HTTP_PROXY_AUTHORIZATION'] = 'Basic cHJveHk=';
+    $_SERVER['HTTP_COOKIE']              = 'sessao=abc';
+    $_SERVER['HTTP_X_TRACE']             = 'trace-1';
+
+    try {
+        callPrivate(makeRouter([]), 'saveLoggin', 'v1/ping', loggedRoute(), ['ok', null, 200]);
+    } finally {
+        unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['HTTP_PROXY_AUTHORIZATION'], $_SERVER['HTTP_COOKIE'], $_SERVER['HTTP_X_TRACE']);
+    }
+
+    $headers = array_change_key_case(FakeRequestLogger::$last['headers'], CASE_LOWER);
+
+    expect($headers['authorization'])->toBe('[redacted]');
+    expect($headers['proxy-authorization'])->toBe('[redacted]');
+    expect($headers['cookie'])->toBe('[redacted]');
+    expect($headers['x-trace'])->toBe('trace-1');
+    expect(FakeRequestLogger::$last['endpoint'])->toBe('v1/ping');
+    expect(FakeRequestLogger::$last['httpCode'])->toBe(200);
+});
+
+it('calls the request logger even where apache_request_headers does not exist', function () {
+    if (function_exists('apache_request_headers')) {
+        $this->markTestSkipped('apache_request_headers existe neste SAPI');
+    }
+
+    monitorUseConfig([], ['settings' => ['logrequest' => [FakeRequestLogger::class, 'log']]]);
+    FakeRequestLogger::$last = null;
+
+    callPrivate(makeRouter([]), 'saveLoggin', 'v1/ping', loggedRoute(), ['ok', null, 200]);
+
+    expect(FakeRequestLogger::$last)->not->toBeNull();
+    expect(FakeRequestLogger::$last['headers'])->toBeArray();
 });
 
 // --- monitor ---

@@ -11,7 +11,7 @@
 **Framework:** PSF (psf/framework) — micro-framework PHP próprio para APIs  
 **Versão atual:** ver tags do git e o `CHANGELOG.md`  
 **PHP mínimo:** 8.1 (o código usa enums nativos)  
-**Bancos suportados hoje:** MySQL, SQL Server (parcial) — PostgreSQL no enum mas sem implementação real  
+**Bancos suportados hoje:** MySQL, PostgreSQL (dialeto próprio; validado em PostgreSQL 16 real pela suíte de drivers do monitor), SQLite e SQL Server (parcial; ainda não validado em banco real)  
 **Autor:** Theodoro Paim  
 **Repositório local:** `c:/laragon/www/framework`
 

@@ -70,8 +70,9 @@ final class Watermark
         try {
             if (!$this->update($value) && $this->fetchValue() === false) {
                 // Na transação de quem chamou, o INSERT vai num savepoint: no PostgreSQL um
-                // erro aborta a transação inteira (25P02) e o UPDATE abaixo falharia. O SQL
-                // Server não aborta a transação nesse erro (e usa outra sintaxe de savepoint).
+                // erro aborta a transação inteira (25P02) e o UPDATE abaixo falharia. No SQL
+                // Server (outra sintaxe de savepoint) assume-se que o erro não aborta a transação:
+                // suposição não validada em banco real, e só vale sem XACT_ABORT ON.
                 $savepoint = !$own && !$this->dialect instanceof SQLServerDialect;
                 if ($savepoint) {
                     $this->pdo->exec('SAVEPOINT ' . self::SAVEPOINT);

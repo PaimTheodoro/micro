@@ -611,7 +611,7 @@ Guia completo em [observabilidade.md](observabilidade.md). Opt-in (`settings.mon
 - **Exceções:** `ExceptionDescriber` monta o trace sem argumentos de frames, com a cadeia `getPrevious()`. O `Router::dispatchController` registra a exceção original nas falhas 5xx (4xx e `HttpResponseException` ficam de fora); `PDOException` nos shims também. Erro fatal vira `FatalError` e força o status a 500. Teto de 20 exceções por request (o fatal é sempre mantido).
 - **Amostragem:** passa a manter com peso 1 também requests com exceção ou com query >= `slow_ms.query` (mesmo além do teto); `max_events_per_request` e `dropped_events` ficam efetivos. Linhas filhas herdam o `sample_weight` do request.
 - **Esquema:** `psf_monitor_queries` e `psf_monitor_exceptions` (2 novas migrations, 5 tabelas no total); `monitor:prune` poda as duas também.
-- **Atualização:** projetos da fase 1 precisam rodar `vendor/bin/phinx monitor:install` (idempotente); sem isso o lote falha e o breaker abre. Com `auto_migrate` fora de `prd` as tabelas são criadas sozinhas.
+- **Atualização:** projetos da fase 1 precisam rodar `vendor/bin/psf monitor:install` (idempotente); sem isso o lote falha e o breaker abre. Com `auto_migrate` fora de `prd` as tabelas são criadas sozinhas.
 - **Seams de teste:** `Monitor::events()` e `Monitor::useFatalProvider()`.
 
 ### Fase 3 — rollups, `Reader` e rotina de manutenção
@@ -622,7 +622,7 @@ Guia completo em [observabilidade.md](observabilidade.md). Opt-in (`settings.mon
 - **Comandos:** `monitor:rollup` e `monitor:maintain` (rollup + prune), `--max-hours` (1..10000), `retention.*` validados (1..36500) antes de qualquer escrita; `monitor:status` mostra `Rollup até`; `monitor:prune` apaga também agregados (`retention.aggregate_days` passa a ter efeito) e imprime `Agregados apagados`.
 - **Robustez do rollup:** a cada execução as 2 horas anteriores ao watermark são reagregadas (linhas atrasadas até 2 h convergem; não contam em `--max-hours`; resultado ganha `reaggregated`); chaves que diferem só em caixa ou espaços à direita são fundidas; hora nova com violação de integridade (SQLSTATE 23xxx) é pulada (`skipped`, linha `Horas puladas`) em vez de travar, perdendo os agregados dela; erro ao ler o watermark (fora tabela ausente) propaga; no SQL Server as datas ligadas vão em ISO 8601 (`SqlDate`). O `monitor:maintain` limpa mesmo se o rollup falhar (exit code 1).
 - **Teto do prune:** o corte dos brutos é `max(min(agora - raw_days, watermark), agora - 4 x raw_days)`. Com o rollup parado por mais de `4 x raw_days`, os brutos são apagados sem agregar e essas horas se perdem (decisão para evitar crescimento ilimitado).
-- **Esquema:** sem migrations novas (as tabelas `psf_monitor_rollups` e `psf_monitor_state` já existiam). Projetos devem agendar `vendor/bin/phinx monitor:maintain` de hora em hora.
+- **Esquema:** sem migrations novas (as tabelas `psf_monitor_rollups` e `psf_monitor_state` já existiam). Projetos devem agendar `vendor/bin/psf monitor:maintain` de hora em hora.
 - **Fora desta fase:** chamadas externas e controller JSON opcional (entregues na fase 4, abaixo).
 
 ### Fase 4, Parte A — chamadas externas e `MonitorApi`
@@ -634,7 +634,7 @@ Guia completo em [observabilidade.md](observabilidade.md). Opt-in (`settings.mon
 - **Rollup e leitura:** métrica `external` (`metric_key = kind:target`); `Reader::external()` e a chave adicional `external` em `Reader::request()`.
 - **`MonitorApi`:** serviço JSON opcional, **sem rotas** e desligado por padrão (`settings.monitor.api.enabled`); o projeto monta o controller com `middlewares: ['authentication']` e delega a `handle($endpoint, $params)`, que devolve `[mensagem, dados, status]` (200/404/422/500, sem vazar erro de banco). Endpoints: `routes`, `queries`, `exceptions`, `external`, `throughput`, `request`.
 - **Classes existentes alteradas (sem mudança de comportamento):** `Request`, `Http`, `Email` e `CloudStorage` (ganchos), `Sampler::weight` (parâmetro opcional no fim), `Config` (chaves novas `slow_ms.external` e `api.enabled`), `Buffer`, `Installer`, `Pruner`, `Rollup`, `Reader` e `DatabaseSink`.
-- **Atualização:** projetos da fase 3 precisam rodar `vendor/bin/phinx monitor:install` (idempotente). Até lá, os lotes de requests com chamadas externas falham de forma segura (breaker e uma linha de log) e `monitor:rollup`/`monitor:prune`/`monitor:maintain` falham com "no such table"; com `auto_migrate` fora de `prd` a tabela é criada sozinha.
+- **Atualização:** projetos da fase 3 precisam rodar `vendor/bin/psf monitor:install` (idempotente). Até lá, os lotes de requests com chamadas externas falham de forma segura (breaker e uma linha de log) e `monitor:rollup`/`monitor:prune`/`monitor:maintain` falham com "no such table"; com `auto_migrate` fora de `prd` a tabela é criada sozinha.
 - **Seams de teste:** `Monitor::events()` também devolve `external`.
 - **Limites:** a Parte B (abaixo) validou o monitor em MySQL e PostgreSQL reais; só a validação em SQL Server real segue pendente; os ganchos de `Email` e `CloudStorage` foram verificados com classes de apoio porque PHPMailer e AWS SDK não estão no ambiente de desenvolvimento; só os clientes do framework são medidos (nada de Guzzle, cURL avulso ou PDO).
 
@@ -688,7 +688,7 @@ Itens marcados como `[ ]` no ROADMAP que ainda não foram implementados:
 
 ### Outros
 
-- **Fase 3:** Testar conexão real com banco PostgreSQL
+- ~~**Fase 3:** Testar conexão real com banco PostgreSQL~~ — ✅ feito: a suíte `tests/Drivers` (`composer test:drivers`) conecta em MySQL 8.4 e PostgreSQL 16 reais e valida o monitor neles (migrations, gravações, rollup, prune, `Reader`, `MonitorApi` e comandos); a validação corrigiu o `Read::exe()` no PostgreSQL. SQL Server segue pendente.
 - **Fase 3:** Verificar paginator (`COUNT() OVER ()`) com MySQL < 8.0 e adicionar fallback se necessário
 - **Fase 5:** `Http::request()` como proxy para `Request` internamente (opcional)
 - **Vuln 2.3:** Adicionar warning em dev para free query sem bindings em `Read.php`

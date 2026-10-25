@@ -5,7 +5,7 @@
 ```php
 // Controller
 class UsuarioController {
-    #[Router(method: 'GET', path: '/usuarios/{id:UUID4}', version: 1)]
+    #[Router(method: 'GET', path: '/usuarios/{id:uuid4}', version: 1)]
     public function show($id) {
         $usuario = Usuario::find()->andWhere(['id' => $id])->one();
         if (!$usuario) {

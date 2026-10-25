@@ -71,19 +71,19 @@ Princípios de desenho:
 2. Instale as tabelas e confira:
 
 ```bash
-vendor/bin/phinx monitor:install
-vendor/bin/phinx monitor:status
+vendor/bin/psf monitor:install
+vendor/bin/psf monitor:status
 ```
 
 3. Agende a manutenção (agregação + limpeza) de hora em hora:
 
 ```cron
-17 * * * * cd /caminho/do/projeto && php vendor/bin/phinx monitor:maintain >> /var/log/psf-monitor.log 2>&1
+17 * * * * cd /caminho/do/projeto && php vendor/bin/psf monitor:maintain >> /var/log/psf-monitor.log 2>&1
 ```
 
 4. Leia os dados com o [`Reader`](#reader) num endpoint do projeto, ou por SQL direto sobre as [tabelas](#esquema-das-tabelas-contrato).
 
-> Nos exemplos, `vendor/bin/phinx` é o wrapper do framework exposto pelo Composer no projeto consumidor (ele inicia o PSF antes de rodar o comando; não use o Phinx puro). No repositório do próprio framework, o mesmo wrapper é chamado como `./bin/phinx`. Os comandos `monitor:*` exigem `robmorgan/phinx` instalado no projeto.
+> Nos exemplos, `vendor/bin/psf` é o wrapper do framework exposto pelo Composer no projeto consumidor (ele inicia o PSF antes de rodar o comando; não use o Phinx puro). O nome estável é `psf`: `vendor/bin/phinx` só é esse wrapper quando o Composer ligou o do PSF (o `robmorgan/phinx` também declara um binário `phinx`). No repositório do próprio framework, use `./bin/psf` (ou `./bin/phinx`). Os comandos `monitor:*` exigem `robmorgan/phinx` instalado no projeto.
 
 Se `settings.monitor` estiver ausente, ou `enabled` for falso, o monitor fica totalmente desligado.
 
@@ -650,7 +650,7 @@ class MonitorController extends ControllerBase
 
 ## Comandos CLI
 
-Os comandos `monitor:*` são registrados pelo wrapper `bin/phinx` do framework, ao lado dos comandos de migration (`make:migration-from-model`, `make:model-from-table`, `analyze:table-vs-model`; ver [database.md](database.md)). Em todos:
+Os comandos `monitor:*` são registrados pelo wrapper `bin/psf` do framework, ao lado dos comandos de migration (`make:migration-from-model`, `make:model-from-table`, `analyze:table-vs-model`; ver [database.md](database.md)). Em todos:
 
 - `-e`/`--environment` é a **chave de `config['db']`** (padrão: `settings.monitor.database`, ou `'default'`), não um ambiente do Phinx. Chave inexistente termina com erro.
 - Qualquer falha imprime uma linha `<error>...</error>` e termina com **exit code 1**.
@@ -666,11 +666,11 @@ Os comandos `monitor:*` são registrados pelo wrapper `bin/phinx` do framework, 
 ### `monitor:install`
 
 ```bash
-vendor/bin/phinx monitor:install              # banco = settings.monitor.database (ou default)
-vendor/bin/phinx monitor:install -e meu_banco # chave de config['db'] explícita
+vendor/bin/psf monitor:install              # banco = settings.monitor.database (ou default)
+vendor/bin/psf monitor:install -e meu_banco # chave de config['db'] explícita
 ```
 
-- Roda o Manager do Phinx **apenas** sobre `src/monitor/migrations/`, com a tabela de controle própria `psf_monitor_migrations` (a `phinxlog` do projeto não é tocada). Essas migrations **não** entram no `paths.migrations` do Phinx: o `vendor/bin/phinx migrate` normal do projeto nunca cria (nem tenta criar) as tabelas do monitor, inclusive em projetos que não usam o monitor.
+- Roda o Manager do Phinx **apenas** sobre `src/monitor/migrations/`, com a tabela de controle própria `psf_monitor_migrations` (a `phinxlog` do projeto não é tocada). Essas migrations **não** entram no `paths.migrations` do Phinx: o `vendor/bin/psf migrate` normal do projeto nunca cria (nem tenta criar) as tabelas do monitor, inclusive em projetos que não usam o monitor.
 - É idempotente (roda só as migrations pendentes): rode-o sempre que [atualizar o framework](#atualizando-o-framework).
 - **Requer `robmorgan/phinx` instalado no projeto** (é dependência de desenvolvimento do framework) e uma entrada de `config['db']` com `driver` e `database`.
 
@@ -693,7 +693,7 @@ Imprime o banco, se as seis tabelas existem (`Instalado`), se o monitor está li
 Não há agregação nem limpeza durante os requests: agende o `monitor:maintain` (sugestão: de hora em hora, alguns minutos depois da hora cheia):
 
 ```cron
-17 * * * * cd /caminho/do/projeto && php vendor/bin/phinx monitor:maintain >> /var/log/psf-monitor.log 2>&1
+17 * * * * cd /caminho/do/projeto && php vendor/bin/psf monitor:maintain >> /var/log/psf-monitor.log 2>&1
 ```
 
 Se preferir separar as etapas, agende `monitor:rollup` e `monitor:prune` isoladamente.
@@ -712,13 +712,13 @@ Se preferir separar as etapas, agende `monitor:rollup` e `monitor:prune` isolada
 Rode `monitor:install` **antes ou junto de cada atualização do framework** (é idempotente: só as migrations novas rodam):
 
 ```bash
-vendor/bin/phinx monitor:install
+vendor/bin/psf monitor:install
 ```
 
 - **Projeto que instalou o monitor na fase 1** (só `psf_monitor_requests`, `psf_monitor_state` e `psf_monitor_rollups`): o `monitor:install` cria `psf_monitor_queries` e `psf_monitor_exceptions`. Enquanto elas não existirem, o lote do request (request + queries + exceções) é gravado numa única transação que **falha e é desfeita por inteiro**: nada é gravado, nem a linha do request, e, após `breaker.failures` falhas seguidas, o breaker abre e registra `[PSF][monitor] gravação suspensa ...`, que normalmente (quando a mensagem do banco indica tabela ausente) termina com `Tabelas ausentes: rode monitor:install.`. A aplicação em si não é afetada. Com `auto_migrate` ligado fora de `prd`, as tabelas novas são criadas sozinhas no primeiro flush.
 - **Projeto da fase 2**: a fase 3 não acrescenta tabelas nem migrations; basta agendar o `monitor:maintain` (ver [Retenção e manutenção](#retenção-e-manutenção)). Até lá, `psf_monitor_rollups` fica vazia e o `Reader` devolve listas vazias.
 - **Colunas `NOT NULL` (correção desta versão).** O Phinx 0.16 cria colunas **anuláveis** por padrão; as migrations do monitor passaram a declarar `'null' => false` em tudo o que o [contrato](#esquema-das-tabelas-contrato) não marca como `null`. No **MySQL** a instalação antes **falhava** (chave primária com colunas anuláveis) e agora funciona. Instalações já feitas em SQLite ou PostgreSQL **mantêm** as colunas anuláveis (migrations já aplicadas não são reexecutadas); isso é inofensivo, pois o monitor sempre preenche essas colunas. Para alinhar ao contrato, recrie as tabelas do monitor (apague-as e a `psf_monitor_migrations`, e rode `monitor:install`; os dados brutos e agregados se perdem).
-- **Projeto da fase 3 (instalação com cinco tabelas)**: a fase 4 acrescenta `psf_monitor_external` (migration `20261026000001_psf_monitor_create_external.php`). **Rode `vendor/bin/phinx monitor:install`** (idempotente: só a migration nova roda). Enquanto a tabela não existir: (1) as gravações **falham de forma segura**: o lote de todo request gravado **que teve chamadas externas** é desfeito por inteiro (nada é gravado, nem a linha do request; requests sem chamadas externas continuam sendo gravados normalmente), o breaker abre depois de `breaker.failures` falhas e registra **uma** linha de `error_log` (normalmente terminando com `Tabelas ausentes: rode monitor:install.`); a aplicação não é afetada; (2) `monitor:rollup`, `monitor:prune` e `monitor:maintain` falham com `no such table` (ou o equivalente do driver), porque leem/limpam as quatro tabelas brutas; (3) `monitor:status` mostra `Instalado: não`. Com `auto_migrate` ligado fora de `prd`, a tabela nova é criada sozinha no primeiro flush (só a migration pendente roda).
+- **Projeto da fase 3 (instalação com cinco tabelas)**: a fase 4 acrescenta `psf_monitor_external` (migration `20261026000001_psf_monitor_create_external.php`). **Rode `vendor/bin/psf monitor:install`** (idempotente: só a migration nova roda). Enquanto a tabela não existir: (1) as gravações **falham de forma segura**: o lote de todo request gravado **que teve chamadas externas** é desfeito por inteiro (nada é gravado, nem a linha do request; requests sem chamadas externas continuam sendo gravados normalmente), o breaker abre depois de `breaker.failures` falhas e registra **uma** linha de `error_log` (normalmente terminando com `Tabelas ausentes: rode monitor:install.`); a aplicação não é afetada; (2) `monitor:rollup`, `monitor:prune` e `monitor:maintain` falham com `no such table` (ou o equivalente do driver), porque leem/limpam as quatro tabelas brutas; (3) `monitor:status` mostra `Instalado: não`. Com `auto_migrate` ligado fora de `prd`, a tabela nova é criada sozinha no primeiro flush (só a migration pendente roda).
 - **Chamadas externas e API não exigem configuração nova**: as chamadas passam a ser registradas assim que a tabela existe. As chaves `slow_ms.external` e `api.enabled` têm default; a `MonitorApi` continua desligada até você ligar `api.enabled`.
 
 ---
@@ -827,12 +827,12 @@ Para não esperar o cooldown, apague o estado do breaker: o arquivo `psf-monitor
 
 ### Tabelas ausentes
 
-`monitor:status` mostra `Instalado: não` (falta alguma das seis tabelas; num projeto que veio da fase 3, falta `psf_monitor_external`). Rode `vendor/bin/phinx monitor:install [-e banco]`; se falhar com `Instalação do monitor requer robmorgan/phinx.`, instale o Phinx no projeto; com `Configuração de banco '<chave>' incompleta para o Phinx.`, confira `driver` e `database` da entrada em `config['db']`.
+`monitor:status` mostra `Instalado: não` (falta alguma das seis tabelas; num projeto que veio da fase 3, falta `psf_monitor_external`). Rode `vendor/bin/psf monitor:install [-e banco]`; se falhar com `Instalação do monitor requer robmorgan/phinx.`, instale o Phinx no projeto; com `Configuração de banco '<chave>' incompleta para o Phinx.`, confira `driver` e `database` da entrada em `config['db']`.
 
 ### Rollup parado ou atrasado
 
 - `Rollup até` mais de ~1 h 5 min atrás de agora: o cron do `monitor:maintain` não está rodando ou está falhando (exit code 1 e linhas `<error>` no log do cron).
-- Backlog grande: cada execução agrega no máximo `--max-hours` horas novas (48 por padrão). Para alcançar o presente mais rápido, rode `vendor/bin/phinx monitor:rollup --max-hours 1000`.
+- Backlog grande: cada execução agrega no máximo `--max-hours` horas novas (48 por padrão). Para alcançar o presente mais rápido, rode `vendor/bin/psf monitor:rollup --max-hours 1000`.
 - Atenção ao teto: com o rollup parado por mais de `4 × raw_days` dias, o prune apaga brutos ainda não agregados e essas horas ficam sem agregados (ver [Retenção e manutenção](#ordem-e-limites-da-limpeza)).
 - `Rollup até: nunca` com dados brutos presentes: o rollup nunca rodou (ou a leitura do watermark falhou, no caso do `monitor:status`).
 

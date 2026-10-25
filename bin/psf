@@ -1,0 +1,7 @@
+#!/usr/bin/env php
+<?php
+
+// bin/psf - Executável do PSF sem conflito de nome com o `phinx` do robmorgan/phinx.
+// Delega ao wrapper bin/phinx (única implementação); argumentos e código de saída passam intactos.
+
+require __DIR__ . '/phinx';

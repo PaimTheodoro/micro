@@ -113,7 +113,8 @@ class Router{
 						'version'	=> $route['attributes']['arguments']['version'],
 						'method'	=> $route['attributes']['arguments']['method'],
 						'body'		=> $this->getBody(),
-						'headers'	=> apache_request_headers() ?? [], 
+						// Sem credenciais em claro; getallheaders() existe em todo SAPI (shim no settings.php)
+						'headers'	=> $this->loggableHeaders(),
 						'response' 	=> isset($response[1]) && !empty($response[1]) ? [
 							'message' 	=> $response[0],
 							'data'		=> $response[1],

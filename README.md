@@ -27,7 +27,7 @@ Opcionais (seção `suggest` do `composer.json`):
 | `ext-apcu` | Cache de rotas e de metadados dos models entre requisições |
 | `ext-curl` | `Psf\Http\Http::request` e `Psf\Http\Request` |
 | `aws/aws-sdk-php` | `Psf\Utils\CloudStorage` (Cloudflare R2) |
-| `robmorgan/phinx` | Comando `vendor/bin/phinx` (migrations, geradores e comandos do monitor) |
+| `robmorgan/phinx` | Comando `vendor/bin/psf` (migrations, geradores e comandos do monitor) |
 
 `Psf\Utils\Email` usa o PHPMailer (`phpmailer/phpmailer`), que também precisa ser instalado pelo projeto.
 
@@ -44,7 +44,7 @@ composer require robmorgan/phinx   # se for usar migrations ou o monitor
 
 ```
 meu-projeto/
-  config.php            ← configuração do PSF (o vendor/bin/phinx procura este arquivo na raiz)
+  config.php            ← configuração do PSF (o vendor/bin/psf procura este arquivo na raiz)
   app/
     Auth.php
     Controllers/
@@ -57,7 +57,7 @@ meu-projeto/
   composer.json         ← "autoload": {"psr-4": {"App\\": "app/"}}
 ```
 
-O `vendor/bin/phinx` procura, na raiz do projeto e nesta ordem, `bootstrap/app.php`, `config/bootstrap.php`, `bootstrap.php` ou `config.php`, e usa o primeiro que encontrar como arquivo de configuração. Ele precisa **retornar o array de config**.
+O `vendor/bin/psf` procura, na raiz do projeto e nesta ordem, `bootstrap/app.php`, `config/bootstrap.php`, `bootstrap.php` ou `config.php`, e usa o primeiro que encontrar como arquivo de configuração. Ele precisa **retornar o array de config**.
 
 ### `config.php`
 
@@ -339,23 +339,23 @@ O monitor grava métricas de cada request da API no **banco do próprio projeto*
 Os valores acima são os padrões (exceto `enabled` e `release`). Também existem `max_events_per_request` (200), `breaker` (`failures` 3, `cooldown_seconds` 300), `connect_timeout` (1 s), `expose_request_id` (`true`), `store_user` (`true`), `user_id_property` (`'id'`), `store_exception_message` (`true`) e `auto_migrate` (`false`; cria as tabelas sozinho fora de `prd`) e `api` (`['enabled' => false]`; liga o serviço `MonitorApi`).
 
 ```bash
-vendor/bin/phinx monitor:install    # cria as tabelas psf_monitor_* (idempotente)
-vendor/bin/phinx monitor:status     # banco, instalação, monitor ligado e até onde o rollup chegou
+vendor/bin/psf monitor:install    # cria as tabelas psf_monitor_* (idempotente)
+vendor/bin/psf monitor:status     # banco, instalação, monitor ligado e até onde o rollup chegou
 ```
 
 ```cron
-17 * * * * cd /caminho/do/projeto && php vendor/bin/phinx monitor:maintain
+17 * * * * cd /caminho/do/projeto && php vendor/bin/psf monitor:maintain
 ```
 
 **Leitura dos dados**: `Psf\Monitor\Reader` oferece `routes()`, `slowQueries()`, `exceptions()`, `external()` e `throughput()` sobre os agregados de um intervalo, e `request($requestId)` com o detalhe bruto de um request. Opcionalmente, `Psf\Monitor\Api\MonitorApi` valida os parâmetros e devolve `[mensagem, dados, status]` para o controller do projeto (desligada por padrão, `settings.monitor.api.enabled`, e sem rotas próprias). O framework não expõe esses dados sozinho: a autenticação e a autorização de um endpoint de métricas ficam por conta do projeto.
 
-**Estado atual**: as fases 1 a 3 e a Parte A da fase 4 estão entregues (requests, queries, exceções, agregados, retenção, `Reader`, chamadas externas e o serviço JSON opcional `MonitorApi`). Quem já usa o monitor precisa rodar `vendor/bin/phinx monitor:install` para criar a 6ª tabela (`psf_monitor_external`). A **Parte B (validação em bancos reais) está concluída para MySQL 8.4 e PostgreSQL 16; apenas o SQL Server segue pendente**. Além do SQLite, as migrations, as gravações, o rollup, o prune, o `Reader`, a `MonitorApi` e os comandos foram **validados em MySQL 8.4 e PostgreSQL 16 reais** (suíte `tests/Drivers`, ver [Validação em bancos reais](docs/observabilidade.md#validação-em-bancos-reais)); essa validação corrigiu a instalação no MySQL e o `Read::exe()` no PostgreSQL. **SQL Server ainda não foi validado** (pendente); valide em homologação antes de usar com ele.
+**Estado atual**: as fases 1 a 3 e a Parte A da fase 4 estão entregues (requests, queries, exceções, agregados, retenção, `Reader`, chamadas externas e o serviço JSON opcional `MonitorApi`). Quem já usa o monitor precisa rodar `vendor/bin/psf monitor:install` para criar a 6ª tabela (`psf_monitor_external`). A **Parte B (validação em bancos reais) está concluída para MySQL 8.4 e PostgreSQL 16; apenas o SQL Server segue pendente**. Além do SQLite, as migrations, as gravações, o rollup, o prune, o `Reader`, a `MonitorApi` e os comandos foram **validados em MySQL 8.4 e PostgreSQL 16 reais** (suíte `tests/Drivers`, ver [Validação em bancos reais](docs/observabilidade.md#validação-em-bancos-reais)); essa validação corrigiu a instalação no MySQL e o `Read::exe()` no PostgreSQL. **SQL Server ainda não foi validado** (pendente); valide em homologação antes de usar com ele.
 
 A referência completa (esquema das tabelas, regras dos agregados, limites conhecidos) está em [docs/observabilidade.md](docs/observabilidade.md).
 
 ## Comandos CLI
 
-O framework instala o binário `phinx` do Composer. Em projetos consumidores use `vendor/bin/phinx`; dentro deste repositório, `./bin/phinx`. É um wrapper: ele encontra o autoloader e o arquivo de config do projeto, chama `PSF::init()`, transforma cada entrada de `config['db']` num ambiente do Phinx e acrescenta os comandos do PSF. Não use o Phinx puro (`vendor/robmorgan/phinx/bin/phinx`) com o PSF.
+O framework instala o binário `psf` do Composer. Em projetos consumidores use `vendor/bin/psf`; dentro deste repositório, `./bin/psf` (ou `./bin/phinx`). É um wrapper: ele encontra o autoloader e o arquivo de config do projeto, chama `PSF::init()`, transforma cada entrada de `config['db']` num ambiente do Phinx e acrescenta os comandos do PSF. Não use o Phinx puro (`vendor/robmorgan/phinx/bin/phinx`) com o PSF.
 
 | Comando | O que faz |
 |---------|-----------|
@@ -373,7 +373,9 @@ O framework instala o binário `phinx` do Composer. Em projetos consumidores use
 | `monitor:prune [-e banco]` | Apaga registros brutos e agregados fora da retenção |
 | `monitor:maintain [-e banco] [--max-hours N]` | Rollup seguido da limpeza (o comando para o cron) |
 
-As migrations do projeto vão para `db/migrations` e os seeds para `db/seeds`. As tabelas do monitor usam migrations próprias, fora desse caminho, com a tabela de controle `psf_monitor_migrations`.
+`vendor/bin/psf` é o nome estável. O `robmorgan/phinx` também declara um binário `phinx` e o Composer mantém o primeiro que instalar: `vendor/bin/phinx` só é o wrapper do PSF quando o Composer ligou o do PSF (continua com esse nome por compatibilidade); num projeto que já tinha o Phinx, ele segue sendo o Phinx puro, sem os comandos `make:*` e `monitor:*`. Por isso prefira sempre `vendor/bin/psf`.
+
+As migrations do projeto vão para `db/migrations` e os seeds para `db/seeds`, na raiz do projeto (crie as pastas; o Phinx não as cria). Sem um `phinx.php` próprio no diretório atual, o wrapper usa a config do framework; `-c arquivo` escolhe outra. As tabelas do monitor usam migrations próprias, fora desse caminho, com a tabela de controle `psf_monitor_migrations`.
 
 ## Testes e qualidade
 
@@ -394,7 +396,7 @@ Os testes rodam com `apc.enable_cli = 0` e com a constante `PSF_TESTING`, que fa
 ## Estrutura do repositório
 
 ```
-bin/phinx            wrapper do Phinx (inicia o PSF e registra os comandos do framework)
+bin/psf, bin/phinx   wrapper do Phinx (inicia o PSF e registra os comandos do framework)
 phinx.php            config do Phinx gerada a partir de config['db']
 settings.php         classe global PSF, constantes DR/ROOT e Ignition
 src/

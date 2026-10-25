@@ -18,7 +18,7 @@ Este micro framework PHP foi criado para facilitar o desenvolvimento de APIs e a
         - `monitor/Command/` - Comandos `monitor:install`, `status`, `rollup`, `prune` e `maintain`
         - `monitor/migrations/` - Migrations das tabelas `psf_monitor_*` (instaladas pelo `monitor:install`, fora do `migrate` do projeto)
     - `utils/` - Utilitários diversos (cache, email, JWT, etc)
-- `bin/phinx` - Wrapper do Phinx: inicia o PSF e registra os comandos de migration e `monitor:*`
+- `bin/psf` (e `bin/phinx`, mesmo wrapper) - Wrapper do Phinx: inicia o PSF e registra os comandos de migration e `monitor:*`
 - `phinx.php` - Configuração do Phinx gerada a partir de `config['db']`
 - `tests/` - Suite de testes (Pest v3)
     - `Unit/` - Testes unitários (`Database`, `Http`, `Model`, `Monitor`, `Utils`)

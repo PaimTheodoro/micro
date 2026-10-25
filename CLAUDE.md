@@ -19,20 +19,21 @@ composer analyse                                  # PHPStan level 1 (phpstan.neo
 ./vendor/bin/pest --filter='maps properties'      # single test by name
 ./vendor/bin/pest --coverage
 
-# Migrations (uses bin/phinx wrapper, NOT vendor/bin/phinx — wrapper boots PSF first)
-./bin/phinx migrate
-./bin/phinx migrate -e <env-name>                 # env name = key under config['db']
-./bin/phinx rollback
-./bin/phinx status
-./bin/phinx create NomeDaMigration
-./bin/phinx make:migration-from-model 'App\Models\Usuario'        # generates a migration from a model
-./bin/phinx make:model-from-table usuarios 'App\Models\Usuario'   # generates a model from a table
-./bin/phinx analyze:table-vs-model usuarios 'App\Models\Usuario'  # diff model vs DB
-./bin/phinx monitor:install [-e <db-key>]         # creates monitor tables (needs robmorgan/phinx)
-./bin/phinx monitor:status [-e <db-key>]          # installed? enabled? rollup watermark ("Rollup até")
-./bin/phinx monitor:rollup [-e <db-key>] [--max-hours N]    # aggregates complete hours into psf_monitor_rollups
-./bin/phinx monitor:maintain [-e <db-key>] [--max-hours N]  # rollup + prune (what the project schedules hourly)
-./bin/phinx monitor:prune [-e <db-key>]           # deletes raw rows past raw_days (watermark-aware, 4x ceiling) and aggregates past aggregate_days
+# Migrations (bin/psf = same wrapper as bin/phinx; NOT plain vendor/robmorgan/phinx -- the wrapper boots PSF first)
+# Consumers: vendor/bin/psf. vendor/bin/phinx is the PSF wrapper only if Composer linked it (robmorgan/phinx declares a bin named phinx too).
+./bin/psf migrate
+./bin/psf migrate -e <env-name>                 # env name = key under config['db']
+./bin/psf rollback
+./bin/psf status
+./bin/psf create NomeDaMigration
+./bin/psf make:migration-from-model 'App\Models\Usuario'        # generates a migration from a model
+./bin/psf make:model-from-table usuarios 'App\Models\Usuario'   # generates a model from a table
+./bin/psf analyze:table-vs-model usuarios 'App\Models\Usuario'  # diff model vs DB
+./bin/psf monitor:install [-e <db-key>]         # creates monitor tables (needs robmorgan/phinx)
+./bin/psf monitor:status [-e <db-key>]          # installed? enabled? rollup watermark ("Rollup até")
+./bin/psf monitor:rollup [-e <db-key>] [--max-hours N]    # aggregates complete hours into psf_monitor_rollups
+./bin/psf monitor:maintain [-e <db-key>] [--max-hours N]  # rollup + prune (what the project schedules hourly)
+./bin/psf monitor:prune [-e <db-key>]           # deletes raw rows past raw_days (watermark-aware, 4x ceiling) and aggregates past aggregate_days
 ```
 
 There is no build step and no linter configured. `composer install` is the only setup command.
@@ -70,12 +71,12 @@ All entity/column references (where array/string, join `ON`, orderBy, groupBy, f
 `QueryBuilder::$allowedSqlFunctions` is a hardcoded allow-list for SQL function calls in expressions; SQL injection has been an issue here historically, so widen it carefully.
 
 ### Database dialects
-[`DialectFactory::fromConfig($configDb)`](src/database/Dialect/DialectFactory.php) returns the right [`DialectInterface`](src/database/Dialect/DialectInterface.php) (`MySQLDialect`, `PostgreSQLDialect`, `SQLServerDialect`) for things that vary per RDBMS: DSN, identifier quoting, `listTablesQuery`, `LIMIT`/`OFFSET`, etc. **Anywhere a query is built, use the dialect — don't hardcode backticks or `LIMIT` syntax.**
+[`DialectFactory::fromConfig($configDb)`](src/database/Dialect/DialectFactory.php) returns the right [`DialectInterface`](src/database/Dialect/DialectInterface.php) (`MySQLDialect`, `PostgreSQLDialect`, `SQLServerDialect`, `SQLiteDialect`) for things that vary per RDBMS: DSN, identifier quoting, `listTablesQuery`, `LIMIT`/`OFFSET`, etc. **Anywhere a query is built, use the dialect — don't hardcode backticks or `LIMIT` syntax.**
 
 `DBDriver` is a backed int enum, but legacy configs may pass the raw int; code that reads `$config['driver']` should tolerate both (see [phinx.php](phinx.php) for the canonical `DBDriver::tryFrom((int) $driver)` pattern).
 
 ### Phinx integration
-[bin/phinx](bin/phinx) walks up the directory tree from the consumer project, finds the consumer's autoloader and a bootstrap file (`bootstrap/app.php`, `config/bootstrap.php`, `bootstrap.php`, or `config.php`), inits PSF with it, then sets `PHINX_CONFIG_FILE` to the framework's [phinx.php](phinx.php) and runs the Phinx application. [phinx.php](phinx.php) translates `config['db']` entries into Phinx environments (Phinx cannot register commands from config, so [bin/phinx](bin/phinx) adds them itself with `addCommands()`): [`ModelAwareMigration`](src/database/Command/ModelAwareMigration.php) (`make:migration-from-model`), [`ModelGenerator`](src/database/Command/ModelGenerator.php) (`make:model-from-table`), [`TableAnalyzer`](src/database/Command/TableAnalyzer.php) (`analyze:table-vs-model`). Each command calls `parent::configure()` and `$this->bootstrap()`, and gets its adapter via `getManager()->getEnvironment(...)`. Migrations are written into the **consumer's** `db/migrations`, not the framework's.
+[bin/phinx](bin/phinx) (also exposed as [bin/psf](bin/psf), a one-line delegate that avoids the Composer bin-name clash with robmorgan/phinx) walks up the directory tree from the consumer project, finds the consumer's autoloader and a bootstrap file (`bootstrap/app.php`, `config/bootstrap.php`, `bootstrap.php`, or `config.php`), defines `PSF_PROJECT_ROOT` (the consumer root; `ROOT` from settings.php points at `vendor/psf/framework` in the CLI), inits PSF with it and runs the Phinx application. Phinx ignores the `PHINX_CONFIG_FILE` constant and only looks for `phinx.*` in the cwd, so when the cwd has none the wrapper makes the framework's [phinx.php](phinx.php) the default of `--configuration` ([`PhinxCli`](src/database/PhinxCli.php)); path computations for CLI commands go through `PhinxCli::projectRoot()`, never `ROOT` directly. [phinx.php](phinx.php) translates `config['db']` entries into Phinx environments (Phinx cannot register commands from config, so [bin/phinx](bin/phinx) adds them itself with `addCommands()`): [`ModelAwareMigration`](src/database/Command/ModelAwareMigration.php) (`make:migration-from-model`), [`ModelGenerator`](src/database/Command/ModelGenerator.php) (`make:model-from-table`), [`TableAnalyzer`](src/database/Command/TableAnalyzer.php) (`analyze:table-vs-model`). Each command calls `parent::configure()` and `$this->bootstrap()`, and gets its adapter via `getManager()->getEnvironment(...)`. Migrations are written into the **consumer's** `db/migrations`, not the framework's.
 
 ### Monitor (observabilidade)
 Opt-in via `config['settings']['monitor']`; docs in [docs/observabilidade.md](docs/observabilidade.md). Namespace `Psf\Monitor` in [src/monitor/](src/monitor/) (PSR-4 in `composer.json`). Records requests, SQL queries, exceptions and external calls (6 tables), aggregates them hourly (`Rollup`) and reads them (`Reader`); [`Api/MonitorApi`](src/monitor/Api/MonitorApi.php) is the optional JSON service (phase 4). Validated on SQLite plus real MySQL 8.4 and PostgreSQL 16 via `tests/Drivers`; SQL Server is still NOT validated (pending).

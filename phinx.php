@@ -19,7 +19,9 @@ if (empty($environments)) {
 
 // O ambiente padrão será o primeiro que você definiu nas suas configs
 $defaultEnvironment = array_key_first($environments);
-$projectRoot = defined('ROOT') ? ROOT : __DIR__;
+// Raiz do projeto consumidor: PSF_PROJECT_ROOT (definido pelo bin/phinx), senão ROOT.
+// O ROOT sozinho, no CLI, aponta para vendor/psf/framework quando o framework é uma dependência.
+$projectRoot = \Psf\Database\PhinxCli::projectRoot(__DIR__);
 
 return [
     'paths' => [

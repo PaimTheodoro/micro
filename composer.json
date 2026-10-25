@@ -33,7 +33,8 @@
         }
     },
     "bin": [
-        "bin/phinx"
+        "bin/phinx",
+        "bin/psf"
     ],
     "require-dev": {
         "robmorgan/phinx": "^0.16",
@@ -55,7 +56,7 @@
         "ext-apcu": "Cache de rotas e de metadados dos models entre requisições",
         "ext-curl": "Necessário para Psf\\Http\\Http::request e Psf\\Http\\Request",
         "aws/aws-sdk-php": "Necessário para Psf\\Utils\\CloudStorage (Cloudflare R2)",
-        "robmorgan/phinx": "Necessário para o comando bin/phinx (migrations) em projetos consumidores"
+        "robmorgan/phinx": "Necessário para o comando bin/psf (migrations) em projetos consumidores"
     },
     "scripts": {
         "test": "pest",

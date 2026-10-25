@@ -2,7 +2,7 @@
 
 - Conexão via `src/database/Connect.php`
 - Configuração em `settings.php` ou `.env`
-- Comandos de migration (`ModelAwareMigration`, `ModelGenerator`, `TableAnalyzer`) em `src/database/Command/`; as migrations são geradas no `db/migrations` do projeto consumidor. O wrapper `bin/phinx` registra esses comandos e também os do monitor (`monitor:install`, `status`, `rollup`, `prune`, `maintain`; ver [observabilidade.md](observabilidade.md#comandos-cli)). A tradução de `config['db']` em ambientes do Phinx fica em `Psf\Database\PhinxEnvironments` (usada pelo `phinx.php` e pelo instalador do monitor)
+- Comandos de migration (`ModelAwareMigration`, `ModelGenerator`, `TableAnalyzer`) em `src/database/Command/`; as migrations são geradas no `db/migrations` do projeto consumidor. O wrapper `bin/psf` (`bin/phinx`) registra esses comandos e também os do monitor (`monitor:install`, `status`, `rollup`, `prune`, `maintain`; ver [observabilidade.md](observabilidade.md#comandos-cli)). A tradução de `config['db']` em ambientes do Phinx fica em `Psf\Database\PhinxEnvironments` (usada pelo `phinx.php` e pelo instalador do monitor)
 - Operações CRUD via classes `Create`, `Read`, `Update`, `Delete` ou pelos métodos dos Models
 
 ## Drivers

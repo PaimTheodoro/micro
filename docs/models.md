@@ -8,7 +8,7 @@ Os models herdam de `Psf\Model\Model` e usam atributos para mapear colunas, chav
 use Psf\Model\Model;
 use Psf\Model\Attributes\{Table, Database, Column, PrimaryKey, Type, Nullable, Standard, Enum, ColumnCreatedDate, ColumnUpdatedDate, ColumnDeletedDate};
 
-#[Table('usuarios'), Database('dafault')]
+#[Table('usuarios'), Database('default')]
 class Usuario extends Model {
     #[Column('id'), PrimaryKey]
     public $id;

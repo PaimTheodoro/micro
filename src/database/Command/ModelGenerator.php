@@ -219,6 +219,6 @@ class ModelGenerator extends AbstractCommand
         if (str_starts_with($path, 'App/')) {
             $path = substr($path, 4);
         }
-        return ROOT . '/app/models/' . $path . '.php';
+        return \Psf\Database\PhinxCli::projectRoot() . '/app/models/' . $path . '.php';
     }
 }

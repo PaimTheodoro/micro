@@ -7,6 +7,12 @@
     // Tenta encontrar o autoloader do Composer subindo a árvore de diretórios
     $autoloaderPath = '/vendor/autoload.php';
     $dir = __DIR__;
+    // Pelo proxy do Composer (vendor/bin/psf) o autoloader do projeto vem em $_composer_autoload_path.
+    // Necessário quando o pacote é um symlink (repositório `path`): __DIR__ aponta para o checkout real.
+    $composerAutoload = $GLOBALS['_composer_autoload_path'] ?? null;
+    if (is_string($composerAutoload) && is_file($composerAutoload)) {
+        $dir = dirname(realpath($composerAutoload), 2);
+    }
     while (!file_exists($dir . $autoloaderPath)) {
         if ($dir === dirname($dir)) { // Chegou na raiz do sistema
             echo "Erro: Não foi possível encontrar o autoloader do Composer. Certifique-se de que o Phinx está sendo executado a partir de um projeto com Composer.\n";
@@ -17,7 +23,14 @@
     
     $autoloader = require $dir . $autoloaderPath;
 
-    // Define a constante ROOT para o projeto
+    // Raiz do projeto consumidor para os comandos (migrations, seeds, models gerados).
+    // O ROOT do settings.php não serve aqui: no CLI ele aponta para o diretório do framework
+    // (vendor/psf/framework). Fica definido antes de carregar a config do projeto.
+    if (!defined('PSF_PROJECT_ROOT')) {
+        define('PSF_PROJECT_ROOT', $dir);
+    }
+
+    // Compatibilidade: ROOT só é definido aqui se ainda não existir
     if (!defined('ROOT')) {
         define('ROOT', $dir);
     }
@@ -53,8 +66,8 @@
         exit(1);
     }
 
-    // Define a constante PHINX_CONFIG_FILE para que o Phinx use nosso arquivo de configuração.
-    // O caminho precisa ser absoluto.
+    // Arquivo de configuração do Phinx do framework (caminho absoluto). A constante é mantida
+    // por compatibilidade, mas o Phinx não a lê: o padrão de --configuration é definido abaixo.
     $frameworkDir = dirname(__DIR__); // Raiz do nosso pacote de framework
     define('PHINX_CONFIG_FILE', $frameworkDir . '/phinx.php');
 
@@ -71,6 +84,14 @@
         // O Phinx não registra comandos customizados via configuração: instanciamos a aplicação
         // e adicionamos os comandos do PSF antes de executar.
         $app = require $phinxApp;
+
+        // O Phinx só procura phinx.* no diretório atual. Sem config própria ali, usa a do
+        // framework (que lê config['db']); `-c arquivo` continua valendo.
+        $defaultConfig = \Psf\Database\PhinxCli::defaultConfigFile((string) getcwd(), PHINX_CONFIG_FILE);
+        if ($defaultConfig !== null) {
+            \Psf\Database\PhinxCli::applyDefaultConfig($app, $defaultConfig);
+        }
+
         $app->addCommands([
             new \Psf\Database\Command\ModelAwareMigration(),
             new \Psf\Database\Command\ModelGenerator(),
