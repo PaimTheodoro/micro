@@ -3,6 +3,7 @@
 namespace Psf\Utils;
 
 use \Psf\Enumerators\Protocol;
+use \Psf\Monitor\{ExternalTarget, Monitor};
 
 use \PHPMailer\PHPMailer\PHPMailer;
 use \PHPMailer\PHPMailer\SMTP;
@@ -89,7 +90,15 @@ class Email{
 		    	}
 		    }
 
-		    if($mail->send()){
+		    // Monitor: só o host SMTP vai para o rótulo; a exceção do PHPMailer é relançada para o catch abaixo
+		    $sent = Monitor::trackExternal(
+		    	'mail',
+		    	ExternalTarget::smtp((string) ($this->server['host'] ?? '')),
+		    	fn () => $mail->send(),
+		    	fn ($r) => $r ? 200 : null
+		    );
+
+		    if($sent){
 		    	return TRUE;
 		    }else{
 		    	$this->error = 'Error to processs. No more data.';

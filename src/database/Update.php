@@ -3,6 +3,7 @@
 namespace Psf\Database;
 
 use Psf\Database\Dialect\DialectFactory;
+use Psf\Monitor\Monitor;
 
 class Update extends Connect{
     private $table;
@@ -50,16 +51,25 @@ class Update extends Connect{
             $places = implode(', ', $places);
 
             $quotedTable = $dialect->quoteIdentifier($obj->table);
-            $obj->update = "UPDATE {$quotedTable} SET {$places} {$obj->terms}";
+            $sql   = "UPDATE {$quotedTable} SET {$places} {$obj->terms}";
+            $start = null;
         
             try{
                 // prepare() dentro do try: drivers como o SQLite validam o SQL já no prepare
-                $obj->update = $obj->connection->prepare($obj->update);
+                $obj->update = $obj->connection->prepare($sql);
+
+                // Monitor: registra uma única vez (no sucesso ou no catch)
+                $start = Monitor::queryStart();
                 $obj->update->execute(array_merge($setParams, $obj->places, $termsParams));
+                Monitor::queryEnd($start, $sql, (string) $database);
                 $obj->result = true;
 
                 return $obj;
             }catch(\PDOException $e){
+                // Registra antes do explodeException(), que termina com exit
+                Monitor::queryEnd($start, $sql, (string) $database);
+                Monitor::exception($e);
+
                 if($obj->connection->inTransaction()){
                     $obj->connection->rollBack();
                 }

@@ -3,6 +3,7 @@
 namespace Psf\Utils;
 
 use \Aws\S3\S3Client;
+use \Psf\Monitor\{ExternalTarget, Monitor};
 
 class CloudStorage{
 	public static function connect(){
@@ -46,13 +47,18 @@ class CloudStorage{
 			    	? mime_content_type($atualpath)
 			    	: (new \finfo(FILEINFO_MIME_TYPE))->buffer((string) $atualpath);
 
-			    $put = $connect->putObject([
-			        'Bucket' 		=> $configAws['bucket'],
-			        'Key'    		=> $filename,
-			        'Body'   		=> $isPath ? $stream : $atualpath,
-			        'ACL'    		=> $acl,
-			        'ContentType' 	=> $contentType ?: 'application/octet-stream'
-			    ]);
+			    $put = Monitor::trackExternal(
+			    	'storage',
+			    	ExternalTarget::storage((string) ($configAws['provider'] ?? ''), 'putObject'),
+			    	fn () => $connect->putObject([
+			    	    'Bucket' 		=> $configAws['bucket'],
+			    	    'Key'    		=> $filename,
+			    	    'Body'   		=> $isPath ? $stream : $atualpath,
+			    	    'ACL'    		=> $acl,
+			    	    'ContentType' 	=> $contentType ?: 'application/octet-stream'
+			    	]),
+			    	fn ($r) => self::monitorStatus($r)
+			    );
 
 			    return $put;
 			} catch (\Aws\S3\Exception\S3Exception $e) {
@@ -72,11 +78,16 @@ class CloudStorage{
 
 		if(strtoupper($configAws['provider']) == 'R2'){
 			try {
-				$connect->getObject([
-					'Bucket' 	=> $configAws['bucket'],
-					'Key'    	=> $filename,
-					'SaveAs' 	=> $saveTo,
-				]);
+				Monitor::trackExternal(
+					'storage',
+					ExternalTarget::storage((string) ($configAws['provider'] ?? ''), 'getObject'),
+					fn () => $connect->getObject([
+						'Bucket' 	=> $configAws['bucket'],
+						'Key'    	=> $filename,
+						'SaveAs' 	=> $saveTo,
+					]),
+					fn ($r) => self::monitorStatus($r)
+				);
 
 				return $saveTo;
 			} catch (\Aws\S3\Exception\S3Exception $e) {
@@ -104,7 +115,12 @@ class CloudStorage{
 		}
 
 		try {
-			$result = $connect->listObjectsV2($params);
+			$result = Monitor::trackExternal(
+				'storage',
+				ExternalTarget::storage((string) ($configAws['provider'] ?? ''), 'listObjects'),
+				fn () => $connect->listObjectsV2($params),
+				fn ($r) => self::monitorStatus($r)
+			);
 		} catch (\Aws\S3\Exception\S3Exception $e) {
 			return ['keys' => [], 'nextContinuationToken' => NULL, 'isTruncated' => false];
 		}
@@ -130,10 +146,15 @@ class CloudStorage{
 
 		if(strtoupper($configAws['provider']) == 'R2'){
 			try {
-		   		$delete = $connect->deleteObject(array(
-		        	'Bucket' => $configAws['bucket'],
-		        	'Key'    => $filename
-		        ));
+		   		$delete = Monitor::trackExternal(
+		   			'storage',
+		   			ExternalTarget::storage((string) ($configAws['provider'] ?? ''), 'deleteObject'),
+		   			fn () => $connect->deleteObject(array(
+		        		'Bucket' => $configAws['bucket'],
+		        		'Key'    => $filename
+		        	)),
+		   			fn ($r) => self::monitorStatus($r)
+		   		);
 		        return true;
 		    } catch (\Aws\S3\Exception\S3Exception $e) {
 		    	// Sem echo: a mensagem do SDK quebraria o JSON da resposta e vazaria detalhes
@@ -142,5 +163,19 @@ class CloudStorage{
 		}
 
 		return false;
+	}
+
+	/**
+	 * Status gravado pelo monitor para um resultado do SDK: o `@metadata.statusCode`
+	 * quando existir e for inteiro; senão 200 (sucesso sem código). Nunca lança.
+	 */
+	private static function monitorStatus($result) : int{
+		try {
+			$code = $result['@metadata']['statusCode'] ?? null;
+		} catch (\Throwable $e) {
+			$code = null;
+		}
+
+		return is_int($code) ? $code : 200;
 	}
 }

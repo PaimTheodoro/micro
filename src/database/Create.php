@@ -3,6 +3,7 @@
 namespace Psf\Database;
 
 use Psf\Database\Dialect\DialectFactory;
+use Psf\Monitor\Monitor;
 
 class Create extends Connect{
     /** Linhas por statement em Create::batch() — mantém a query dentro de limites seguros de placeholders/packet do MySQL mesmo para chamadores que não limitam o array de entrada. */
@@ -33,15 +34,21 @@ class Create extends Connect{
             ));
             $places = ':' . implode(', :', array_keys($obj->data));
 
-            $obj->create = "INSERT INTO " . $dialect->quoteIdentifier($obj->table) . " ({$fields}) VALUES ({$places})";
-            $obj->create = $obj->connection->prepare($obj->create);
+            $sql = "INSERT INTO " . $dialect->quoteIdentifier($obj->table) . " ({$fields}) VALUES ({$places})";
+            $obj->create = $obj->connection->prepare($sql);
+
+            // Monitor: registra uma única vez (no sucesso ou no catch); a exceção relançada é registrada pelo Router
+            $start = Monitor::queryStart();
 
             try{
                 $obj->create->execute($obj->data);
+                Monitor::queryEnd($start, $sql, (string) $database);
                 $obj->result = $obj->connection->lastInsertId();
 
                 return $obj;
             }catch(\PDOException $e){
+                Monitor::queryEnd($start, $sql, (string) $database);
+
                 if($obj->connection->inTransaction()){
                     $obj->connection->rollBack();
                 }
@@ -83,6 +90,8 @@ class Create extends Connect{
         $quotedTable = $dialect->quoteIdentifier($obj->table);
 
         $inserted = 0;
+        $sql      = null;
+        $start    = null;
 
         try{
             foreach(array_chunk($rows, self::BATCH_CHUNK_SIZE) as $chunk){
@@ -103,11 +112,20 @@ class Create extends Connect{
 
                 $sql = "INSERT INTO {$quotedTable} ({$quotedColumns}) VALUES " . implode(', ', $rowPlaceholderGroups);
                 $statement = $obj->connection->prepare($sql);
+
+                // Monitor: um registro por chunk (no sucesso ou no catch, nunca nos dois)
+                $start = Monitor::queryStart();
                 $statement->execute($bindings);
+                Monitor::queryEnd($start, $sql, $database);
+                $start = null;
 
                 $inserted += $statement->rowCount();
             }
         }catch(\PDOException $e){
+            if($sql !== null){
+                Monitor::queryEnd($start, $sql, $database);
+            }
+
             if($obj->connection->inTransaction()){
                 $obj->connection->rollBack();
             }

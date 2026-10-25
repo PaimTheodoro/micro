@@ -57,6 +57,9 @@ Expressões sem delimitador (`{n:\d+}`) são ancoradas (`^...$`) — não casam 
 - `HttpResponseException` (resposta HTTP deliberada) passa direto.
 - Uma exceção com código 4xx explícito (`throw new \Exception('Sem permissão', 403)`) mantém status e mensagem.
 - Qualquer outra exceção vira 500 "Erro ao executar a rota." (a original fica em `getPrevious()`).
+- `\Error`/`TypeError` lançados pelo controller são propagados sem alteração.
+
+Com o [monitor](observabilidade.md#exceções) ligado, o `Router` registra a exceção original das falhas 5xx e os `\Error`/`TypeError` (os 4xx e `HttpResponseException` não são registrados).
 
 ### CORS
 
@@ -70,9 +73,12 @@ Configure `settings.cors` para liberar origens e responder o preflight (`OPTIONS
         'headers'     => ['Content-Type', 'Authorization'],
         'credentials' => false, // com true, '*' devolve a origem da requisição
         'max_age'     => 600,
+        'expose_headers' => ['X-Request-Id'], // opcional: emite Access-Control-Expose-Headers
     ],
 ],
 ```
+
+Com o [monitor](observabilidade.md#x-request-id) ligado (e `expose_request_id`, o padrão), o `Router` acrescenta `X-Request-Id` a `expose_headers` automaticamente.
 
 ### Cache de rotas
 
@@ -80,4 +86,8 @@ Com APCu, as rotas ficam em cache (`prd`: chave estática por app, TTL de 1h; `d
 
 ### Execução
 
-O roteador (`Psf\Http\Router`) resolve a rota, executa middlewares e despacha para o método do controller. 
+O roteador (`Psf\Http\Router`) resolve a rota, executa middlewares e despacha para o método do controller.
+
+### Monitor (observabilidade)
+
+Com `settings.monitor.enabled`, o construtor do `Router` inicia o monitor e emite o header `X-Request-Id` em toda resposta; ao casar a rota, o monitor grava o **padrão** dela (`/usuarios/{id:int}`), nunca a URL real (`(unmatched)` quando nenhuma rota casa), e o `user_id` vem de `Router::$auth` após a autenticação. Detalhes em [observabilidade.md](observabilidade.md#ciclo-de-vida-do-request).

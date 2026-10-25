@@ -15,6 +15,7 @@ Tudo que você precisa para construir uma API com o PSF do zero.
 7. [Buscas com o Query Builder](#7-buscas-com-o-query-builder)
 8. [Migrations](#8-migrations)
 9. [Testes](#9-testes)
+10. [Observabilidade (monitor)](#10-observabilidade-monitor)
 
 ---
 
@@ -826,6 +827,49 @@ expect($valor)->toHaveCount(3);
 
 ---
 
+## 10. Observabilidade (monitor)
+
+O monitor grava métricas de requests, queries SQL e exceções no banco do próprio projeto e as agrega por hora. É opt-in: desligado, cada gancho é só uma checagem de booleano. Referência completa: [`docs/observabilidade.md`](observabilidade.md).
+
+### Ligar
+
+```php
+'settings' => [
+    'monitor' => [
+        'enabled'  => true,
+        'database' => 'default',         // chave de config['db'] onde ficam as tabelas
+        'sample'   => ['normal' => 0.1], // erros, exceções e lentos são sempre gravados
+    ],
+],
+```
+
+Com o monitor ligado, toda resposta traz o header `X-Request-Id` (o de entrada, se válido, ou um gerado; exposto ao navegador quando `settings.cors` está configurado). Use `Monitor::requestId()` para colocá-lo nos logs da aplicação.
+
+### Instalar e agendar
+
+```bash
+./vendor/bin/phinx monitor:install   # cria as tabelas psf_monitor_* (idempotente; rode a cada atualização)
+./vendor/bin/phinx monitor:status    # banco, tabelas instaladas, monitor ligado, "Rollup até"
+# cron, de hora em hora (rollup + limpeza):
+# 17 * * * * cd /caminho/do/projeto && php vendor/bin/phinx monitor:maintain
+```
+
+### Ler
+
+```php
+use Psf\Monitor\Reader;
+
+$reader = new Reader();
+$to     = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+$from   = $to->modify('-24 hours');
+$rotas   = $reader->routes($from, $to, 10);           // hits, error_rate, avg_ms, p50/p95/p99...
+$detalhe = $reader->request('valor-do-X-Request-Id'); // linhas brutas de um request
+```
+
+O framework não expõe esses dados sozinho: crie um endpoint protegido pela autenticação do projeto.
+
+---
+
 ## Resumo rápido
 
 | Tarefa | Comando / Classe |
@@ -843,3 +887,5 @@ expect($valor)->toHaveCount(3);
 | Gerar do model | `./vendor/bin/phinx generate-model -- --model=App\\Models\\X` |
 | Rodar migrations | `./vendor/bin/phinx migrate` |
 | Rodar testes | `./vendor/bin/pest` |
+| Instalar o monitor | `./vendor/bin/phinx monitor:install` |
+| Manutenção do monitor (cron) | `./vendor/bin/phinx monitor:maintain` |

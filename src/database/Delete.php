@@ -3,6 +3,7 @@
 namespace Psf\Database;
 
 use Psf\Database\Dialect\DialectFactory;
+use Psf\Monitor\Monitor;
 
 class Delete extends Connect{
     private $table;
@@ -25,16 +26,24 @@ class Delete extends Connect{
             parse_str($parseString, $obj->places);
 
             $dialect = DialectFactory::fromConfig(\PSF::getConfig()->db[$database]);
-            $obj->delete = "DELETE FROM " . $dialect->quoteIdentifier($obj->table) . " {$obj->terms}";
+            $sql   = "DELETE FROM " . $dialect->quoteIdentifier($obj->table) . " {$obj->terms}";
+            $start = null;
 
             try{
-                $obj->delete = $obj->connection->prepare($obj->delete);
+                $obj->delete = $obj->connection->prepare($sql);
 
+                // Monitor: registra uma única vez (no sucesso ou no catch)
+                $start = Monitor::queryStart();
                 $obj->delete->execute(array_merge($obj->places, $termsParams));
+                Monitor::queryEnd($start, $sql, (string) $database);
                 $obj->result = true;
 
                 return $obj;
             }catch (\PDOException $e){
+                // Registra antes do explodeException(), que termina com exit
+                Monitor::queryEnd($start, $sql, (string) $database);
+                Monitor::exception($e);
+
                 if($obj->connection->inTransaction()){
                     $obj->connection->rollBack();
                 }

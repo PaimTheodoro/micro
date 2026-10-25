@@ -10,11 +10,14 @@ class PostgreSQLDialect implements DialectInterface
         return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
+    /**
+     * `$database` é IGNORADO (nunca é emitido nome qualificado por schema): a conexão do PostgreSQL já está nele e não há
+     * referência a outro banco; `"banco"."tabela"` seria lido como
+     * schema.tabela ("relation ... does not exist"). A tabela é resolvida
+     * pelo `search_path` da conexão (padrão `public`).
+     */
     public function quoteTable(string $table, ?string $database = null): string
     {
-        if ($database !== null) {
-            return $this->quoteIdentifier($database) . '.' . $this->quoteIdentifier($table);
-        }
         return $this->quoteIdentifier($table);
     }
 

@@ -10,6 +10,10 @@
         <testsuite name="Integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <!-- MySQL/PostgreSQL reais: só roda com PSF_DRIVERS=1 (composer test:drivers); sem isso, pulada -->
+        <testsuite name="Drivers">
+            <directory>tests/Drivers</directory>
+        </testsuite>
     </testsuites>
     <php>
         <!-- APCu não funciona em CLI — desabilita para evitar interferência nos testes -->

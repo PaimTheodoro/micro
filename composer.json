@@ -26,6 +26,7 @@
             "Psf\\Model\\": "src/model/",
             "Psf\\Helper\\": "src/helpers/",
             "Psf\\Http\\": "src/http/",
+            "Psf\\Monitor\\": "src/monitor/",
             "Psf\\Utils\\": "src/utils/",
             "Psf\\Enumerators\\": "src/enum/",
             "Psf\\Model\\Attributes\\": "src/model/attributes/"
@@ -60,6 +61,11 @@
         "test": "pest",
         "test:unit": "pest --testsuite=Unit",
         "test:integration": "pest --testsuite=Integration",
+        "test:drivers": [
+            "Composer\\Config::disableProcessTimeout",
+            "@putenv PSF_DRIVERS=1",
+            "pest --testsuite=Drivers"
+        ],
         "analyse": "phpstan analyse --memory-limit=512M"
     }
 }

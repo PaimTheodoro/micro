@@ -3,6 +3,7 @@
 namespace Psf\Database;
 
 use Psf\Database\Dialect\DialectFactory;
+use Psf\Monitor\Monitor;
 
 class Read extends Connect{
     private $select;
@@ -11,6 +12,9 @@ class Read extends Connect{
 
     private $read;
     private $connection;
+
+    /** Chave do banco usada em exe(), repassada ao monitor em execute(). */
+    private $database = 'default';
     
     public function exe($table, $string = null, array|string|null $parseString = null, $database = 'default', $free = false){
         if (!empty($parseString)) {
@@ -39,6 +43,7 @@ class Read extends Connect{
             }
         }
         
+        $this->database   = (string) $database;
         $this->connection = parent::getConnection($database);
 
         $this->read = $this->connection->prepare($this->select);
@@ -102,11 +107,21 @@ class Read extends Connect{
     }
 
     private function execute(){
+        $start = null;
+
         try{
             $this->getSyntax();
+
+            // Monitor: mede execute() + fetchAll(); registra uma única vez (aqui ou no catch)
+            $start = Monitor::queryStart();
             $this->read->execute();
             $this->result = $this->read->fetchAll();
+            Monitor::queryEnd($start, $this->select, $this->database);
         }catch (\PDOException $e){
+            // Registra antes do explodeException(), que termina com exit
+            Monitor::queryEnd($start, $this->select, $this->database);
+            Monitor::exception($e);
+
             $this->result = null;
             explodeException($e);
         }

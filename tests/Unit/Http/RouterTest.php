@@ -2,6 +2,8 @@
 
 use Psf\Http\HttpResponseException;
 use Psf\Http\Router;
+use Psf\Monitor\Config;
+use Psf\Monitor\Monitor;
 use Tests\Fixtures\Controllers\FakeController;
 
 function makeRouter(array $routes, string $method = 'GET'): Router
@@ -37,6 +39,11 @@ function callPrivate(Router $router, string $method, ...$args)
 beforeEach(function () {
     FakeController::$instances = 0;
     $_GET = [];
+});
+
+afterEach(function () {
+    Router::$auth = [];
+    monitorCleanup();
 });
 
 // --- matching ---
@@ -163,4 +170,145 @@ it('redacts credentials from the headers handed to the request logger', function
 
     expect($headers['Authorization'])->toBe('[redacted]');
     expect($headers['X-Trace'])->toBe('abc');
+});
+
+// --- monitor ---
+
+it('records the matched route pattern for the monitor', function () {
+    Config::fake(['enabled' => true]);
+    $_GET['_url'] = 'v1/users/5';
+
+    callPrivate(makeRouter([route('users/{id:int}', 'show')]), 'callMethodRoute');
+
+    $snap = Monitor::snapshot();
+    expect($snap['route'])->toBe('users/{id:int}');
+    expect($snap['method'])->toBe('GET');
+    expect($snap['version'])->toBe(1);
+});
+
+it('records (unmatched) for a 404', function () {
+    Config::fake(['enabled' => true]);
+    $_GET['_url'] = 'v1/nao-existe';
+
+    try {
+        callPrivate(makeRouter([route('users/{id:int}', 'show')]), 'callMethodRoute');
+        $this->fail('Esperava exceção 404');
+    } catch (\Exception $e) {
+        expect($e->getCode())->toBe(404);
+    }
+
+    expect(Monitor::snapshot()['route'])->toBe('(unmatched)');
+});
+
+it('forwards the authenticated user to the monitor', function () {
+    monitorUseConfig(['enabled' => true], ['settings' => ['verifyauth' => [\Tests\Fixtures\Controllers\FakeAuth::class, 'verify']]]);
+    $_GET['_url'] = 'v1/secure';
+
+    $route = route('secure', 'ok');
+    $route['attributes']['arguments']['middlewares'] = ['authentication'];
+
+    callPrivate(makeRouter([$route]), 'callMethodRoute');
+
+    expect(Monitor::snapshot()['user_id'])->toBe('9');
+});
+
+it('does not touch the monitor when disabled', function () {
+    Config::fake(['enabled' => false]);
+    $_GET['_url'] = 'v1/users/5';
+
+    callPrivate(makeRouter([route('users/{id:int}', 'show')]), 'callMethodRoute');
+
+    expect(Monitor::snapshot())->toBe([]);
+});
+
+it('records the original exception when the route fails with a 5xx', function () {
+    Config::fake(['enabled' => true]);
+    $_GET['_url'] = 'v1/boom';
+
+    try {
+        callPrivate(makeRouter([route('boom', 'boom')]), 'callMethodRoute');
+        $this->fail('Esperava exceção');
+    } catch (\Exception $e) {
+        expect($e->getMessage())->toBe('Erro ao executar a rota.');
+        $registradas = Monitor::events()['exceptions'];
+        expect($registradas)->toHaveCount(1);
+        expect($registradas[0]['throwable'])->toBeInstanceOf(\RuntimeException::class);
+        expect($e->getPrevious())->toBe($registradas[0]['throwable']);
+    }
+});
+
+it('does not record 4xx exceptions', function () {
+    Config::fake(['enabled' => true]);
+    $_GET['_url'] = 'v1/forbidden';
+
+    try {
+        callPrivate(makeRouter([route('forbidden', 'forbidden')]), 'callMethodRoute');
+        $this->fail('Esperava exceção');
+    } catch (\Exception $e) {
+        expect($e->getCode())->toBe(403);
+    }
+
+    expect(Monitor::events()['exceptions'] ?? [])->toBe([]);
+});
+
+it('does not record deliberate http responses', function () {
+    Config::fake(['enabled' => true]);
+    $_GET['_url'] = 'v1/respond';
+
+    try {
+        callPrivate(makeRouter([route('respond', 'respond')]), 'callMethodRoute');
+        $this->fail('Esperava HttpResponseException');
+    } catch (HttpResponseException $e) {
+        expect($e)->toBeInstanceOf(HttpResponseException::class);
+    }
+
+    expect(Monitor::events()['exceptions'] ?? [])->toBe([]);
+});
+
+it('keeps the wrapped exception and records nothing when the monitor is disabled', function () {
+    Config::fake(['enabled' => false]);
+    $_GET['_url'] = 'v1/boom';
+
+    try {
+        callPrivate(makeRouter([route('boom', 'boom')]), 'callMethodRoute');
+        $this->fail('Esperava exceção');
+    } catch (\Exception $e) {
+        expect($e->getMessage())->toBe('Erro ao executar a rota.');
+        expect($e->getPrevious())->toBeInstanceOf(\RuntimeException::class);
+    }
+
+    expect(Monitor::events())->toBe([]);
+});
+
+it('records and rethrows unchanged an Error raised by the controller', function () {
+    Config::fake(['enabled' => true]);
+    $_GET['_url'] = 'v1/type-error';
+
+    $capturada = null;
+    try {
+        callPrivate(makeRouter([route('type-error', 'typeError')]), 'callMethodRoute');
+        $this->fail('Esperava TypeError');
+    } catch (\TypeError $e) {
+        $capturada = $e;
+    }
+
+    expect($capturada->getMessage())->toBe('tipo inválido')
+        ->and($capturada->getPrevious())->toBeNull();
+    $registradas = Monitor::events()['exceptions'];
+    expect($registradas)->toHaveCount(1)
+        ->and($registradas[0]['throwable'])->toBe($capturada);
+});
+
+it('rethrows an Error unchanged and records nothing when the monitor is disabled', function () {
+    Config::fake(['enabled' => false]);
+    $_GET['_url'] = 'v1/type-error';
+
+    try {
+        callPrivate(makeRouter([route('type-error', 'typeError')]), 'callMethodRoute');
+        $this->fail('Esperava TypeError');
+    } catch (\TypeError $e) {
+        expect($e->getMessage())->toBe('tipo inválido');
+    }
+
+    expect(Monitor::events())->toBe([]);
 });

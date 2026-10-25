@@ -75,6 +75,11 @@
             new \Psf\Database\Command\ModelAwareMigration(),
             new \Psf\Database\Command\ModelGenerator(),
             new \Psf\Database\Command\TableAnalyzer(),
+            new \Psf\Monitor\Command\MonitorInstall(),
+            new \Psf\Monitor\Command\MonitorStatus(),
+            new \Psf\Monitor\Command\MonitorPrune(),
+            new \Psf\Monitor\Command\MonitorRollup(),
+            new \Psf\Monitor\Command\MonitorMaintain(),
         ]);
         $app->run();
     } else {

@@ -46,3 +46,47 @@ it('treats OPTIONS with Access-Control-Request-Method as a preflight', function 
 it('does not treat a plain OPTIONS as a preflight', function () {
     expect(Cors::resolve(['origins' => '*'], 'https://a.com', 'OPTIONS')['preflight'])->toBeFalse();
 });
+
+it('emits expose headers when configured', function () {
+    $headers = Cors::resolve(['origins' => '*', 'expose_headers' => ['X-Request-Id', 'X-Total']], 'https://a.com', 'GET')['headers'];
+
+    expect($headers['Access-Control-Expose-Headers'])->toBe('X-Request-Id, X-Total');
+});
+
+it('omits expose headers by default', function () {
+    $headers = Cors::resolve(['origins' => '*'], 'https://a.com', 'GET')['headers'];
+
+    expect($headers)->not->toHaveKey('Access-Control-Expose-Headers');
+});
+
+it('ignores misconfigured expose headers instead of failing', function () {
+    $headers = Cors::resolve([
+        'origins'        => '*',
+        'expose_headers' => [['X-Nested'], ' X-Total ', '', '   ', 42, null, true, 'X-Total', 'x-total', new stdClass(), 'X-Request-Id'],
+    ], 'https://a.com', 'GET')['headers'];
+
+    expect($headers['Access-Control-Expose-Headers'])->toBe('X-Total, X-Request-Id');
+});
+
+it('omits expose headers when no valid name remains', function () {
+    $headers = Cors::resolve(['origins' => '*', 'expose_headers' => [[], '', ' ', 1]], 'https://a.com', 'GET')['headers'];
+
+    expect($headers)->not->toHaveKey('Access-Control-Expose-Headers');
+});
+
+it('adds an exposed header tolerating a non-array expose_headers', function (mixed $expose, array $expected) {
+    $config = Cors::withExposedHeader(['origins' => '*', 'expose_headers' => $expose], 'X-Request-Id');
+
+    expect($config['expose_headers'])->toBe($expected)
+        ->and($config['origins'])->toBe('*');
+})->with([
+    'string'        => ['X-Total', ['X-Request-Id']],
+    'null'          => [null, ['X-Request-Id']],
+    'int'           => [5, ['X-Request-Id']],
+    'array'         => [['X-Total'], ['X-Total', 'X-Request-Id']],
+    'já presente'   => [['x-request-id'], ['x-request-id']],
+]);
+
+it('adds an exposed header when expose_headers is missing', function () {
+    expect(Cors::withExposedHeader(['origins' => '*'], 'X-Request-Id')['expose_headers'])->toBe(['X-Request-Id']);
+});

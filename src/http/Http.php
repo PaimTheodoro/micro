@@ -3,6 +3,7 @@
 namespace Psf\Http;
 
 use Psf\Enumerators\HttpStatusCode;
+use Psf\Monitor\{ExternalTarget, Monitor};
 
 class Http{
 
@@ -39,7 +40,16 @@ class Http{
 			curl_setopt($curl, CURLOPT_HTTPHEADER, $headerSend);
 		}
 
-		$doRequest = curl_exec($curl);
+		// Monitor: só o host vai para o rótulo; falha do cURL ou código 0 = status null
+		$doRequest = Monitor::trackExternal(
+			'http',
+			ExternalTarget::fromUrl((string) $url),
+			fn () => curl_exec($curl),
+			function ($r) use ($curl) {
+				$code = $r === false ? 0 : (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+				return $code === 0 ? null : $code;
+			}
+		);
 
 		$arrReturn = [];
 		$arrReturn["code"] = curl_getinfo($curl, CURLINFO_HTTP_CODE);

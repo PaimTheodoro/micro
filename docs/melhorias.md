@@ -15,6 +15,7 @@ Todas as mudanças são **retrocompatíveis** — nenhuma interface pública foi
 - [Fase 4 — Ferramentas de Migration](#fase-4--ferramentas-de-migration)
 - [Fase 5 — Divisão de Responsabilidades](#fase-5--divisão-de-responsabilidades)
 - [Fase 6 — Modernização PHP 8+](#fase-6--modernização-php-8)
+- [Fase 7 — Monitor (observabilidade)](#fase-7--monitor-observabilidade)
 - [Arquivos criados](#arquivos-criados)
 - [O que ainda está pendente](#o-que-ainda-está-pendente)
 
@@ -31,6 +32,7 @@ Todas as mudanças são **retrocompatíveis** — nenhuma interface pública foi
 | 4 | ModelGenerator e TableAnalyzer reescritos | `Command/ModelGenerator`, `Command/TableAnalyzer` |
 | 5 | Extração de ModelSerializer, Hydrator, QueryBuilder, RequestParser | 5 novas classes |
 | 6 | PHP 8+: match, enums, tipagem, APCu L2 | `MetadataCache`, `HttpStatusCode`, `StatusCode` |
+| 7 | Monitor de observabilidade (fases 1-3: requests, queries, exceções, rollups e `Reader`) | `src/monitor/`, `Router`, `Cors`, `Read/Create/Update/Delete` |
 
 ---
 
@@ -588,6 +590,60 @@ Reflection API (lê os Attributes da classe)
 | `strpos(...) === 0` | múltiplos arquivos | `str_starts_with()` |
 | `getParses()` retornava string | `"k1=v1&k2=v2"` re-parseada em `Read::exe()` | Retorna `array` diretamente |
 | Encoding corrompido | `"Erro (c\xF3digo"` | `"Erro (código"` UTF-8 correto |
+
+---
+
+## Fase 7 — Monitor (observabilidade)
+
+Guia completo em [observabilidade.md](observabilidade.md). Opt-in (`settings.monitor.enabled`); desligado, cada gancho é uma checagem de booleano. Nenhuma assinatura pública existente mudou.
+
+- **Coleta:** `Monitor::boot()` no construtor do `Router`, padrão da rota casada (`(unmatched)` para 404), `user_id` após a autenticação e flush no shutdown (após `fastcgi_finish_request()` quando existir). Preflight CORS não é registrado.
+- **Amostragem por peso:** erros (status >= 500) e requests lentos sempre gravados; demais com probabilidade `sample.normal` e `sample_weight = 1/p`, para agregados não enviesados.
+- **Armazenamento:** conexão PDO dedicada (`Psf\Monitor\Connection`) e `DatabaseSink` com INSERT multi-linha em transação; `CircuitBreaker` (APCu ou arquivo-flag) impede que um banco de monitoramento ruim afete a API.
+- **Esquema:** `psf_monitor_requests`, `psf_monitor_state` e `psf_monitor_rollups` (esta última preenchida pelo `Rollup` a partir da fase 3), como contrato documentado; migrations em `src/monitor/migrations/`, fora do `paths.migrations` do Phinx.
+- **Comandos:** `monitor:install`, `monitor:status` e `monitor:prune` (lotes, respeitando watermark, `raw_days` validado) em `bin/phinx`; `auto_migrate` opt-in, recusado em `prd`.
+- **`X-Request-Id`:** aceita o de entrada (`[A-Za-z0-9-]{8,64}`) ou gera um; devolvido na resposta e exposto via `Access-Control-Expose-Headers` (`Cors` ganhou a chave `expose_headers`).
+- **Fases seguintes:** rollups e `Reader` (fase 3) e chamadas externas e `MonitorApi` (fase 4, Parte A), todos entregues abaixo.
+
+### Fase 2 — queries e exceções
+
+- **Queries:** ganchos nos shims `Read`, `Create::exe/batch`, `Update` e `Delete` (um evento por statement executado). Durante o request só o SQL cru é guardado em `Buffer`; `SqlNormalizer` (tokenizador de passada única) normaliza no flush: literais viram `?`, comentários saem, `IN (...)` e `VALUES (...),(...)` colapsam, limite de 2000 caracteres, hash `sha1`.
+- **Exceções:** `ExceptionDescriber` monta o trace sem argumentos de frames, com a cadeia `getPrevious()`. O `Router::dispatchController` registra a exceção original nas falhas 5xx (4xx e `HttpResponseException` ficam de fora); `PDOException` nos shims também. Erro fatal vira `FatalError` e força o status a 500. Teto de 20 exceções por request (o fatal é sempre mantido).
+- **Amostragem:** passa a manter com peso 1 também requests com exceção ou com query >= `slow_ms.query` (mesmo além do teto); `max_events_per_request` e `dropped_events` ficam efetivos. Linhas filhas herdam o `sample_weight` do request.
+- **Esquema:** `psf_monitor_queries` e `psf_monitor_exceptions` (2 novas migrations, 5 tabelas no total); `monitor:prune` poda as duas também.
+- **Atualização:** projetos da fase 1 precisam rodar `vendor/bin/phinx monitor:install` (idempotente); sem isso o lote falha e o breaker abre. Com `auto_migrate` fora de `prd` as tabelas são criadas sozinhas.
+- **Seams de teste:** `Monitor::events()` e `Monitor::useFatalProvider()`.
+
+### Fase 3 — rollups, `Reader` e rotina de manutenção
+
+- **Rollups:** `Rollup` agrega as horas completas (com folga de 300 s) de requests, queries e exceções em `psf_monitor_rollups`, ponderando por `sample_weight`. Cada hora é recalculada inteira (DELETE + INSERT + avanço do watermark na mesma transação), portanto é idempotente; no máximo 48 horas por execução; `metric_key` truncada em 191 com fusão das chaves que colidem (`mergeByKey`).
+- **Histograma:** `Histogram` com 10 buckets fixos (bordas 10, 25, 50, 100, 250, 500, 1000, 2500, 5000 ms), `encode`/`decode`/`merge` e percentis estimados por interpolação (bucket aberto usa `max_ms` como teto). `Watermark` guarda `rollup_watermark` em `psf_monitor_state`.
+- **`Reader`:** `routes` (com `orderBy` em whitelist), `slowQueries`, `exceptions`, `throughput` e `request(id)`; intervalo semiaberto em UTC, `limit` em [1, 1000], floats sem arredondar. Agregados vêm dos rollups; só `request()` lê as tabelas brutas.
+- **Comandos:** `monitor:rollup` e `monitor:maintain` (rollup + prune), `--max-hours` (1..10000), `retention.*` validados (1..36500) antes de qualquer escrita; `monitor:status` mostra `Rollup até`; `monitor:prune` apaga também agregados (`retention.aggregate_days` passa a ter efeito) e imprime `Agregados apagados`.
+- **Robustez do rollup:** a cada execução as 2 horas anteriores ao watermark são reagregadas (linhas atrasadas até 2 h convergem; não contam em `--max-hours`; resultado ganha `reaggregated`); chaves que diferem só em caixa ou espaços à direita são fundidas; hora nova com violação de integridade (SQLSTATE 23xxx) é pulada (`skipped`, linha `Horas puladas`) em vez de travar, perdendo os agregados dela; erro ao ler o watermark (fora tabela ausente) propaga; no SQL Server as datas ligadas vão em ISO 8601 (`SqlDate`). O `monitor:maintain` limpa mesmo se o rollup falhar (exit code 1).
+- **Teto do prune:** o corte dos brutos é `max(min(agora - raw_days, watermark), agora - 4 x raw_days)`. Com o rollup parado por mais de `4 x raw_days`, os brutos são apagados sem agregar e essas horas se perdem (decisão para evitar crescimento ilimitado).
+- **Esquema:** sem migrations novas (as tabelas `psf_monitor_rollups` e `psf_monitor_state` já existiam). Projetos devem agendar `vendor/bin/phinx monitor:maintain` de hora em hora.
+- **Fora desta fase:** chamadas externas e controller JSON opcional (entregues na fase 4, abaixo).
+
+### Fase 4, Parte A — chamadas externas e `MonitorApi`
+
+- **Chamadas externas:** `Request::send`, `Http::request` (depreciado), `Email::send` e as quatro operações do `CloudStorage` (`putObject`, `getObject`, `listObjects`, `deleteObject`) passam a reportar ao monitor quando ele está ligado, sem mudar retorno nem exceção (a chamada que falha é registrada uma vez, com `status` nulo). `kind` é `http`, `mail` ou `storage`; o `target` é um rótulo seguro gerado por `ExternalTarget` (só o host, o host SMTP ou `provedor/operação`; nunca URL, query, userinfo, destinatário, bucket nem chave de objeto). Erro = `status IS NULL OR status >= 500` (4xx não é erro).
+- **API para chamadas próprias:** `Monitor::trackExternal()`, `external()`, `externalStart()` e `externalEnd()` (nunca lançam; omitir o status em `external()` conta como erro).
+- **Teto e amostragem:** `max_events_per_request` vale por tipo de evento (queries e chamadas externas têm baterias separadas; o excedente soma em `dropped_events`); chamada com duração >= `slow_ms.external` (novo, padrão 1000) mantém o request com peso 1, mesmo que tenha sido descartada. `Sampler::weight` ganhou um último parâmetro opcional (`$maxExternalMs`).
+- **Esquema:** `psf_monitor_external` (migration `20261026000001_psf_monitor_create_external.php`; 6 tabelas no total); `monitor:prune` e o rollup passam a considerar as quatro tabelas brutas.
+- **Rollup e leitura:** métrica `external` (`metric_key = kind:target`); `Reader::external()` e a chave adicional `external` em `Reader::request()`.
+- **`MonitorApi`:** serviço JSON opcional, **sem rotas** e desligado por padrão (`settings.monitor.api.enabled`); o projeto monta o controller com `middlewares: ['authentication']` e delega a `handle($endpoint, $params)`, que devolve `[mensagem, dados, status]` (200/404/422/500, sem vazar erro de banco). Endpoints: `routes`, `queries`, `exceptions`, `external`, `throughput`, `request`.
+- **Classes existentes alteradas (sem mudança de comportamento):** `Request`, `Http`, `Email` e `CloudStorage` (ganchos), `Sampler::weight` (parâmetro opcional no fim), `Config` (chaves novas `slow_ms.external` e `api.enabled`), `Buffer`, `Installer`, `Pruner`, `Rollup`, `Reader` e `DatabaseSink`.
+- **Atualização:** projetos da fase 3 precisam rodar `vendor/bin/phinx monitor:install` (idempotente). Até lá, os lotes de requests com chamadas externas falham de forma segura (breaker e uma linha de log) e `monitor:rollup`/`monitor:prune`/`monitor:maintain` falham com "no such table"; com `auto_migrate` fora de `prd` a tabela é criada sozinha.
+- **Seams de teste:** `Monitor::events()` também devolve `external`.
+- **Limites:** a Parte B (abaixo) validou o monitor em MySQL e PostgreSQL reais; só a validação em SQL Server real segue pendente; os ganchos de `Email` e `CloudStorage` foram verificados com classes de apoio porque PHPMailer e AWS SDK não estão no ambiente de desenvolvimento; só os clientes do framework são medidos (nada de Guzzle, cURL avulso ou PDO).
+
+### Fase 4, Parte B — validação em bancos reais
+
+- **Suíte de drivers:** `tests/Drivers` roda o mesmo roteiro do monitor contra MySQL 8.4 e PostgreSQL 16 reais, com `docker-compose.drivers.yml` e `composer test:drivers`; só executa com `PSF_DRIVERS=1` (sem a variável, os testes são pulados e a suíte padrão continua sem Docker). Validado em MySQL 8.4.13 e PostgreSQL 16.15; **SQL Server segue pendente** (driver ODBC da Microsoft indisponível no ambiente).
+- **Quatro defeitos encontrados e corrigidos** (cada um com teste): (1) as migrations declaram `NOT NULL` explícito, porque o Phinx 0.16 cria colunas anuláveis e o MySQL recusava a chave primária anulável; (2) `PostgreSQLDialect::quoteTable()` não prefixa mais o nome do banco (`"banco"."tabela"` era lido como `schema.tabela`), o que quebrava `Read::exe()` e o `QueryBuilder` no PostgreSQL; (3) a grafia da chave fundida no rollup é determinística (menor em ordem binária), em vez de depender da ordem do `GROUP BY`; (4) `Watermark::write()` faz o INSERT num `SAVEPOINT` quando está na transação de quem chama (PostgreSQL), evitando `25P02`.
+- **Mudança de comportamento:** `quoteTable()` no PostgreSQL (ver CHANGELOG).
+- **Operação:** `monitor:rollup`, `monitor:prune` e `monitor:maintain` sugerem `monitor:install` quando faltam tabelas; a `MonitorApi` registra no `error_log` só a classe da exceção no 500.
 
 ---
 

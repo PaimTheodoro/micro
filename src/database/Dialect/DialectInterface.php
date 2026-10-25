@@ -10,9 +10,12 @@ interface DialectInterface
     public function quoteIdentifier(string $identifier): string;
 
     /**
-     * Retorna a referência completa de uma tabela, opcionalmente prefixada
-     * pelo nome do banco de dados.
-     * Ex.: MySQL → `mydb`.`users`  |  SQLServer → [mydb].[dbo].[users]
+     * Retorna a referência completa de uma tabela.
+     * - MySQL e SQL Server prefixam o nome do banco (`$database`):
+     *   MySQL → `mydb`.`users`  |  SQLServer → [mydb].[dbo].[users]
+     * - PostgreSQL e SQLite IGNORAM `$database`: o PostgreSQL resolve a tabela
+     *   pelo `search_path` da conexão (nunca gera nome qualificado por schema)
+     *   e o SQLite usa o arquivo da conexão.
      */
     public function quoteTable(string $table, ?string $database = null): string;
 

@@ -3,6 +3,7 @@
 namespace Psf\Http;
 
 use \Psf\Enumerators\{HTTPMethod, HTTPBodyEncoded};
+use \Psf\Monitor\{ExternalTarget, Monitor};
 
 class Request{
 	private $settings;
@@ -72,7 +73,13 @@ class Request{
 			curl_setopt($curl, CURLOPT_HTTPHEADER, $this->settings['headers']);
 		}
 
-		$execute = curl_exec($curl);
+		// Monitor: só o host vai para o rótulo (nunca caminho/query); falha do cURL ou código 0 = status null
+		$execute = Monitor::trackExternal(
+			'http',
+			ExternalTarget::fromUrl((string) ($this->settings['url'] ?? '')),
+			fn () => curl_exec($curl),
+			fn ($r) => $r === false ? null : ((int) curl_getinfo($curl, CURLINFO_HTTP_CODE) ?: null)
+		);
 
 		if($execute === false){
 			$errno = curl_errno($curl);

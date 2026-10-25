@@ -66,8 +66,11 @@ it('SQLServer quoteTable includes dbo schema', function () {
     expect((new SQLServerDialect())->quoteTable('users', 'myapp'))->toBe('[myapp].[dbo].[users]');
 });
 
-it('PostgreSQL quoteTable with database prefix', function () {
-    expect((new PostgreSQLDialect())->quoteTable('users', 'myapp'))->toBe('"myapp"."users"');
+it('PostgreSQL quoteTable ignores the database (a.b would be schema.table)', function () {
+    // No PostgreSQL a conexão já está no banco; "banco"."tabela" seria lido como schema.tabela
+    // e quebraria Read::exe() e o QueryBuilder ("relation ... does not exist").
+    expect((new PostgreSQLDialect())->quoteTable('users', 'myapp'))->toBe('"users"');
+    expect((new PostgreSQLDialect())->quoteTable('users'))->toBe('"users"');
 });
 
 // ---------------------------------------------------------------------------
@@ -253,7 +256,7 @@ it('SQLite dialect quotes, paginates and builds its DSN', function () {
 
 it('quoteTable escapes the quote character in every dialect', function () {
     expect((new MySQLDialect())->quoteTable('a`b', 'd`b'))->toBe('`d``b`.`a``b`');
-    expect((new PostgreSQLDialect())->quoteTable('a"b', 'd"b'))->toBe('"d""b"."a""b"');
+    expect((new PostgreSQLDialect())->quoteTable('a"b', 'd"b'))->toBe('"a""b"');
     expect((new SQLServerDialect())->quoteTable('a]b', 'd]b'))->toBe('[d]]b].[dbo].[a]]b]');
 });
 

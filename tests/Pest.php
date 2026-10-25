@@ -64,3 +64,30 @@ uses()
         PSF::init(['config' => __DIR__ . '/Fixtures/config.php']);
     })
     ->in('Integration');
+
+/*
+| Monitor: helpers de config temporária e limpeza após cada teste.
+*/
+require_once __DIR__ . '/Fixtures/monitor_helpers.php';
+
+uses()->afterEach(fn () => monitorCleanup())->in('Unit/Monitor', 'Integration/Monitor');
+
+/*
+| Drivers: o monitor contra MySQL e PostgreSQL reais (docker-compose.drivers.yml).
+| Só roda com PSF_DRIVERS=1; sem isso cada teste é pulado com o motivo. Cada
+| teste cria e apaga o próprio banco (driverUse/driverCleanup).
+*/
+require_once __DIR__ . '/Fixtures/driver_helpers.php';
+
+dataset('drivers', ['mysql', 'pgsql']);
+
+uses()
+    ->beforeEach(function () {
+        if (!driversEnabled()) {
+            $this->markTestSkipped(DRIVERS_SKIP_REASON);
+        }
+        // Erros esperados (explodeException, breaker) não poluem a saída.
+        ini_set('error_log', sys_get_temp_dir() . '/psf-drivers.log');
+    })
+    ->afterEach(fn () => driverCleanup())
+    ->in('Drivers');

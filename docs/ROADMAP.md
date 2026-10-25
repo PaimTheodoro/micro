@@ -46,6 +46,17 @@ Interfaces públicas não podem mudar sem deprecation. Nomes de classe não pode
 | 5 | Divisão de responsabilidades | ✅ Concluído | `refactor/split-classes` |
 | 6 | Modernização PHP 8+ | ✅ Concluído | `refactor/php8` |
 
+### Monitor de observabilidade
+
+Guia em [observabilidade.md](observabilidade.md); histórico em [melhorias.md](melhorias.md#fase-7--monitor-observabilidade).
+
+| Fase do monitor | Descrição | Status | Branch |
+|-----------------|-----------|--------|--------|
+| 1 | Requests, `X-Request-Id`, amostragem por peso, circuit breaker, `monitor:install`/`status`/`prune`, `auto_migrate` | ✅ Concluído | `feat/monitor-observabilidade` |
+| 2 | Queries SQL normalizadas, exceções e erros fatais, limpeza de mensagens | ✅ Concluído | `feat/monitor-observabilidade` |
+| 3 | Rollups por hora, histograma/percentis, `Reader`, `monitor:rollup`/`maintain` | ✅ Concluído | `feat/monitor-fase3` |
+| 4 | Chamadas externas via `Monitor::external` (`Email`, `CloudStorage`, `Request`/`Http`), controller JSON opcional sobre o `Reader`, testes de fumaça em MySQL/PostgreSQL/SQL Server | ⬜ Planejado | — |
+
 ### Melhorias pontuais já aplicadas (fora das fases)
 
 Correções realizadas durante revisão de qualidade em 2026-04-16 — sem fase dedicada, já estão no código:

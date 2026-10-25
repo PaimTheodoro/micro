@@ -1,0 +1,60 @@
+# Bancos DESCARTÁVEIS para a suíte de drivers do monitor (tests/Drivers).
+# Senhas e bancos só de TESTE — nunca use estas credenciais fora daqui.
+#
+#   docker compose -f docker-compose.drivers.yml up -d --wait
+#   composer test:drivers
+#   docker compose -f docker-compose.drivers.yml down -v
+#
+# Sem volumes nomeados: `down -v` apaga tudo. Os testes criam e apagam um banco
+# próprio por teste; o banco `psf_test` abaixo só existe para conferência manual.
+name: psf-monitor-test
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: psf-monitor-test-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: psf_test_root
+      MYSQL_DATABASE: psf_test
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "127.0.0.1:33306:3306"
+    healthcheck:
+      # TCP (127.0.0.1): só responde depois da inicialização (o servidor temporário do init não escuta TCP).
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -ppsf_test_root --silent"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  postgres:
+    image: postgres:16
+    container_name: psf-monitor-test-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: psf_test_root
+      POSTGRES_DB: psf_test
+    ports:
+      - "127.0.0.1:35432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d psf_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+      start_period: 5s
+
+  # SQL Server: PENDENTE (o driver ODBC da Microsoft não está instalado nesta máquina).
+  # Fica como documentação e NÃO sobe por padrão (perfil `sqlserver`). Para usar,
+  # instale o msodbcsql18 + pdo_sqlsrv e rode com `--profile sqlserver`; a imagem
+  # azure-sql-edge é nativa em arm64 (Apple Silicon). Exige aceitar a EULA da
+  # Microsoft: leia-a e só então acrescente `ACCEPT_EULA: "Y"` em `environment`.
+  sqlserver:
+    profiles: ["sqlserver"]
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    container_name: psf-monitor-test-sqlserver
+    environment:
+      MSSQL_SA_PASSWORD: "Psf_test_Root1"
+    ports:
+      - "127.0.0.1:31433:1433"

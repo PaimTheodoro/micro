@@ -11,6 +11,7 @@ namespace Psf\Http;
  *   'headers'     => ['Content-Type', 'Authorization']   (padrão: os dois acima)
  *   'credentials' => bool                                (padrão: false)
  *   'max_age'     => int segundos do cache do preflight  (padrão: 600)
+ *   'expose_headers' => ['X-Request-Id']                 (padrão: nenhum — emite Access-Control-Expose-Headers)
  */
 class Cors
 {
@@ -52,6 +53,11 @@ class Cors
             $headers['Access-Control-Allow-Credentials'] = 'true';
         }
 
+        $expose = self::headerNames($config['expose_headers'] ?? []);
+        if ($expose !== []) {
+            $headers['Access-Control-Expose-Headers'] = implode(', ', $expose);
+        }
+
         $preflight = strtoupper($method) === 'OPTIONS' && !empty($requestedMethod);
 
         if ($preflight) {
@@ -61,5 +67,54 @@ class Cors
         }
 
         return ['headers' => $headers, 'preflight' => $preflight];
+    }
+
+    /**
+     * Devolve a config com `$name` incluído em `expose_headers`, se ainda não
+     * estiver (comparação sem diferenciar maiúsculas). Um `expose_headers`
+     * que não seja array é tratado como vazio.
+     */
+    public static function withExposedHeader(array $config, string $name): array
+    {
+        $expose = isset($config['expose_headers']) && is_array($config['expose_headers'])
+            ? $config['expose_headers']
+            : [];
+
+        if (!in_array(strtolower($name), array_map('strtolower', self::headerNames($expose)), true)) {
+            $expose[] = $name;
+        }
+        $config['expose_headers'] = $expose;
+
+        return $config;
+    }
+
+    /**
+     * Normaliza uma lista de nomes de header vinda da config: mantém só
+     * strings não vazias (aparadas), sem repetição (sem diferenciar
+     * maiúsculas). Qualquer outra forma vira lista vazia.
+     *
+     * @return list<string>
+     */
+    private static function headerNames(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $names = [];
+        $seen  = [];
+        foreach ($value as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+            $item = trim($item);
+            $key  = strtolower($item);
+            if ($item === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $names[]    = $item;
+        }
+        return $names;
     }
 }

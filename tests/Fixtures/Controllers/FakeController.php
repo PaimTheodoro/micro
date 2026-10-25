@@ -39,4 +39,9 @@ class FakeController extends ControllerBase
     {
         throw new \RuntimeException('detalhe interno', 7);
     }
+
+    public function typeError(): void
+    {
+        throw new \TypeError('tipo inválido');
+    }
 }

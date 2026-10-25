@@ -6,6 +6,7 @@ use Attribute;
 use \Psf\Http\{StatusCode, Http, ApiDocsGenerator, RouteCacheManager};
 use \Psf\Enumerators\HttpStatusCode;
 use \Psf\Helper\CheckFields;
+use \Psf\Monitor\{Monitor, Config as MonitorConfig};
 
 #[Attribute]
 class Router{
@@ -25,6 +26,8 @@ class Router{
 
 	public function __construct(...$args){
 		$this->method = filter_input(\INPUT_SERVER, 'REQUEST_METHOD', \FILTER_SANITIZE_SPECIAL_CHARS) ?: ($_SERVER['REQUEST_METHOD'] ?? null);
+
+		Monitor::boot($this->method);
 
 		$cacheManager = new RouteCacheManager();
         $this->routes = $cacheManager->getRoutes();
@@ -142,8 +145,11 @@ class Router{
         $matchedRoute = $this->findMatchingRoute($urlFind);
 
         if(empty($matchedRoute)){
+            Monitor::route('(unmatched)', (string) $this->method, (int) $this->version);
             throw new \Exception("Não foi possível encontrar a rota correspondente.", HttpStatusCode::NOT_FOUND->value);
         }
+
+        Monitor::route($matchedRoute['attributes']['arguments']['path'], (string) $this->method, (int) $this->version);
 
         $this->executeMiddlewares($matchedRoute, $urlFind);
         
@@ -249,6 +255,7 @@ class Router{
         $doValid = call_user_func([$objVerify, $verifyAuth[1]]);
         if($doValid === true || is_object($doValid)){
             self::$auth = $doValid;
+            Monitor::user(self::$auth);
         } else {
             $responseData = is_bool($doValid) ? null : (is_array($doValid) ? $doValid : ['msg' => $doValid]);
             $this->saveLoggin($url, $route, ["Erro ao validar a autenticação", $responseData, HttpStatusCode::UNAUTHORIZED->value]);
@@ -312,7 +319,14 @@ class Router{
                 throw $e;
             }
 
+            // Falha real (5xx): registra a exceção original, com a cadeia, antes de embrulhar
+            \Psf\Monitor\Monitor::exception($e);
+
             throw new \Exception("Erro ao executar a rota.", HttpStatusCode::INTERNAL_SERVER_ERROR->value, $e);
+        } catch (\Throwable $e){
+            // \Error/TypeError do controller: registra e propaga sem alterar (como antes)
+            \Psf\Monitor\Monitor::exception($e);
+            throw $e;
         }
     }
 
@@ -324,6 +338,11 @@ class Router{
 	 * Aplica CORS conforme settings.cors e responde o preflight (204) sem chegar às rotas.
 	 */
 	private function applyCors(array $config) : void{
+		// Expõe o X-Request-Id ao browser apenas quando o monitor está ativo e configurado para isso
+		if(MonitorConfig::enabled() && MonitorConfig::get('expose_request_id')){
+			$config = Cors::withExposedHeader($config, 'X-Request-Id');
+		}
+
 		$cors = Cors::resolve(
 			$config,
 			$_SERVER['HTTP_ORIGIN'] ?? null,
