@@ -2,7 +2,7 @@
     "name": "psf/framework",
     "description": "Framework PHP para desenvolvimento de APIs",
     "type": "library",
-    "license": "MIT",
+    "license": "proprietary",
     "authors": [
         {
             "name": "Theodoro Paim",

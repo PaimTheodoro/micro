@@ -4,6 +4,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Não lançado]
 
+## [0.1.0] - 2026-10-25
+
+- Licença declarada como proprietária (`proprietary` no `composer.json` e arquivo `LICENSE`); antes o `composer.json` dizia MIT.
+
 ### ⚠️ Mudanças de comportamento (leia antes de atualizar)
 
 - **Erros de banco** (`explodeException`): a resposta 500 não traz mais mensagem/arquivo/linha. Defina `settings.debug = true` para voltar a expor. O erro é sempre registrado com `error_log`.
