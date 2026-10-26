@@ -8,7 +8,7 @@ use Psf\Utils\JWT;
 // - validação de estrutura (3 partes)
 
 it('encodes and decodes a valid token correctly', function () {
-    $payload = ['user_id' => 42, 'role' => 'admin'];
+    $payload = ['user_id' => 42, 'role' => 'admin', 'exp' => time() + 3600];
 
     $token   = JWT::encode($payload);
     $decoded = JWT::decode($token, true);
@@ -31,7 +31,7 @@ it('returns false for an expired token (exp in the past)', function () {
 });
 
 it('returns false for a not-yet-valid token (nbf in the future)', function () {
-    $token = JWT::encode(['user_id' => 1, 'nbf' => time() + 3600]);
+    $token = JWT::encode(['user_id' => 1, 'exp' => time() + 7200, 'nbf' => time() + 3600]);
 
     expect(JWT::decode($token, true))->toBeFalse();
 });
@@ -64,7 +64,7 @@ it('returns false when token has no payload (empty string)', function () {
 });
 
 it('verify() returns the payload array for a valid token', function () {
-    $payload = ['user_id' => 7];
+    $payload = ['user_id' => 7, 'exp' => time() + 3600];
 
     expect(JWT::verify(JWT::encode($payload)))->toMatchArray($payload);
 });
@@ -85,7 +85,7 @@ it('validates by default when $valid is omitted', function () {
 
 it('rejects a non-numeric exp or nbf', function () {
     expect(JWT::verify(JWT::encode(['exp' => 'amanha'])))->toBeFalse();
-    expect(JWT::verify(JWT::encode(['nbf' => 'ontem'])))->toBeFalse();
+    expect(JWT::verify(JWT::encode(['exp' => time() + 3600, 'nbf' => 'ontem'])))->toBeFalse();
 });
 
 it('rejects a validly signed token whose payload is not a JSON object', function () {
@@ -104,6 +104,25 @@ it('throws when the jwt secret is missing or too short', function () {
     try {
         \PSF::init(['config' => $tmp]);
         expect(fn() => JWT::encode(['a' => 1]))->toThrow(RuntimeException::class);
+    } finally {
+        \PSF::init(['config' => $original]);
+        @unlink($tmp);
+    }
+});
+
+
+it('rejects a token without exp by default', function () {
+    expect(JWT::verify(JWT::encode(['user_id' => 1])))->toBeFalse();
+});
+
+it('accepts a token without exp when jwt.require_exp is false', function () {
+    $original = dirname(__DIR__, 2) . '/Fixtures/config.php';
+    $tmp      = sys_get_temp_dir() . '/psf-jwt-noexp-' . uniqid() . '.php';
+    file_put_contents($tmp, "<?php return ['jwt' => ['secret' => 'segredo-de-teste-longo', 'require_exp' => false]];");
+
+    try {
+        \PSF::init(['config' => $tmp]);
+        expect(JWT::verify(JWT::encode(['user_id' => 1])))->toMatchArray(['user_id' => 1]);
     } finally {
         \PSF::init(['config' => $original]);
         @unlink($tmp);

@@ -160,7 +160,7 @@
 
                                     <?php if (isset($request['description']) && !empty($request['description'])): ?>
                                         <div class="row">
-                                            <div class="col description"><?= $request['description'] ?></div>
+                                            <div class="col description"><?= htmlspecialchars((string) $request['description']) ?></div>
                                         </div>
                                     <?php endif; ?>
 

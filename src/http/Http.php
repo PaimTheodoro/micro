@@ -9,8 +9,11 @@ class Http{
 
 	/**
 	 * @deprecated Use \Psf\Http\Request::get/post/put/delete() instead.
+	 *
+	 * @param int $timeout        Timeout total da chamada, em segundos (0 = sem limite).
+	 * @param int $connectTimeout Timeout de conexão, em segundos (0 = sem limite).
 	 */
-	public static function request($method, $url, $body, $headers = []){
+	public static function request($method, $url, $body, $headers = [], int $timeout = Request::DEFAULT_TIMEOUT, int $connectTimeout = Request::DEFAULT_CONNECT_TIMEOUT){
 		$curl = curl_init();
 
 		if($method == "GET"){
@@ -31,6 +34,8 @@ class Http{
 
 		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
 		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, max(0, $connectTimeout));
+		curl_setopt($curl, CURLOPT_TIMEOUT, max(0, $timeout));
 
 		if(!empty($headers)){
 			$headerSend = [];

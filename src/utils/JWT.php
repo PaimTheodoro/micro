@@ -43,7 +43,7 @@ class JWT{
     }
 
     /**
-     * Valida assinatura, `exp` e `nbf` e devolve o payload (array) ou false.
+     * Valida assinatura, `exp` (obrigatório, salvo `jwt.require_exp = false`) e `nbf` e devolve o payload (array) ou false.
      * Use este método para autenticar requisições.
      */
     public static function verify(string $token): array|false{
@@ -78,6 +78,12 @@ class JWT{
         if($valid){
             // Assinatura válida mas payload que não é objeto JSON não é um token utilizável
             if(!is_array($payload)){
+                return false;
+            }
+
+            // Token sem `exp` nunca expira: exigido por padrão (jwt.require_exp = false desliga, p.ex. tokens legados)
+            $requireExp = (\PSF::getConfig()->jwt['require_exp'] ?? true) !== false;
+            if($requireExp && !isset($payload['exp'])){
                 return false;
             }
 

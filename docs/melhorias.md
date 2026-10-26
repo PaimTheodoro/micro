@@ -686,6 +686,17 @@ Itens marcados como `[ ]` no ROADMAP que ainda não foram implementados:
 - `tests/Unit/Http/` — HttpTest, RouterTest, RequestTest
 - `tests/Integration/` — CrudIntegrationTest, TransactionTest
 
+### Endurecimento (JWT, timeouts, docs)
+
+- **JWT:** `JWT::verify()`/`decode($t, true)` recusam token sem `exp` (antes valia para sempre). Quem emite tokens sem `exp` deve passar a incluí-lo ou definir `jwt.require_exp = false` na config.
+- **Timeouts HTTP:** `Request::timeout($segundos, $conexao = null)` define os timeouts por requisição (padrões `Request::DEFAULT_TIMEOUT` = 30 s e `DEFAULT_CONNECT_TIMEOUT` = 5 s); `Http::request()` (depreciado) ganhou os parâmetros opcionais `$timeout` e `$connectTimeout` (antes não tinha limite algum). `0` = sem limite.
+- **Docs da API:** a `description` das rotas é escapada no template (HTML nela passa a aparecer como texto).
+
+### Notificações do monitor e padrão camelCase
+
+- **Notificações:** `settings.monitor.notifiers` envia avisos (500, exceção, fatal, lentidão, falha externa) por Slack, Teams, Discord, e-mail, webhook, log, classe própria (`NotifierInterface`) ou callback, com regras `when`, filtros por rota/método/ambiente e throttle por fingerprint. Ver [observabilidade.md](observabilidade.md#notificações).
+- **camelCase na config:** as chaves da config do monitor e do CORS passam a ser camelCase (`rawDays`, `slowMs`, `maxAge`, `exposeHeaders`...). As grafias snake_case seguem aceitas como alias (`Psf\Helper\ConfigKeys`); o banco continua em snake_case. Mensagens de erro e docs foram atualizados para a nova grafia.
+
 ### Outros
 
 - ~~**Fase 3:** Testar conexão real com banco PostgreSQL~~ — ✅ feito: a suíte `tests/Drivers` (`composer test:drivers`) conecta em MySQL 8.4 e PostgreSQL 16 reais e valida o monitor neles (migrations, gravações, rollup, prune, `Reader`, `MonitorApi` e comandos); a validação corrigiu o `Read::exe()` no PostgreSQL. SQL Server segue pendente.

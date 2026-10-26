@@ -124,6 +124,7 @@ return [
     // ─── JWT ─────────────────────────────────────────────────────────────────
     'jwt' => [
         'secret' => 'troque-por-uma-chave-secreta-longa', // mínimo de 16 caracteres
+        // 'require_exp' => false, // padrão true: token sem `exp` é recusado em verify()/decode(); false só p/ tokens legados
     ],
 
     // ─── Configurações gerais ────────────────────────────────────────────────

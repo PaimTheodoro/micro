@@ -6,6 +6,10 @@ use \Psf\Enumerators\{HTTPMethod, HTTPBodyEncoded};
 use \Psf\Monitor\{ExternalTarget, Monitor};
 
 class Request{
+	/** Timeouts padrão (s): conexão e total da chamada. Sobrescreva por requisição com timeout(). */
+	public const DEFAULT_CONNECT_TIMEOUT = 5;
+	public const DEFAULT_TIMEOUT         = 30;
+
 	private $settings;
 	private $error;
 
@@ -55,6 +59,24 @@ class Request{
 		return $this;
 	}
 
+	/**
+	 * Define os timeouts desta requisição, em segundos (0 = sem limite, como no cURL).
+	 * Sem chamar este método valem DEFAULT_TIMEOUT e DEFAULT_CONNECT_TIMEOUT.
+	 */
+	public function timeout(int $seconds, ?int $connectSeconds = null) : Request{
+		if($seconds < 0 || ($connectSeconds !== null && $connectSeconds < 0)){
+			throw new \InvalidArgumentException('Timeout não pode ser negativo');
+		}
+
+		$this->settings['timeout'] = $seconds;
+
+		if($connectSeconds !== null){
+			$this->settings['connectTimeout'] = $connectSeconds;
+		}
+
+		return $this;
+	}
+
 	public function send(){
 		$curl = curl_init();
 		curl_setopt($curl, CURLOPT_CUSTOMREQUEST, $this->settings['method']->name);
@@ -66,8 +88,8 @@ class Request{
 		
 		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
 		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-		curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, 5);
-		curl_setopt($curl, CURLOPT_TIMEOUT, 30);
+		curl_setopt($curl, CURLOPT_CONNECTTIMEOUT, $this->settings['connectTimeout'] ?? self::DEFAULT_CONNECT_TIMEOUT);
+		curl_setopt($curl, CURLOPT_TIMEOUT, $this->settings['timeout'] ?? self::DEFAULT_TIMEOUT);
 
 		if(isset($this->settings['headers']) && !empty($this->settings['headers'])){
 			curl_setopt($curl, CURLOPT_HTTPHEADER, $this->settings['headers']);
