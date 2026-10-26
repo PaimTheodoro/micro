@@ -95,23 +95,23 @@ it('ranks routes by total time with merged percentiles', function () {
 
     $a = $routes[0];
     $merged = [1, 1, 0, 2, 3, 0, 0, 0, 0, 1];
-    expect(array_keys($a))->toBe(['key', 'method', 'route', 'hits', 'errors', 'error_rate', 'avg_ms', 'max_ms', 'p50_ms', 'p95_ms', 'p99_ms']);
+    expect(array_keys($a))->toBe(['key', 'method', 'route', 'hits', 'errors', 'errorRate', 'avgMs', 'maxMs', 'p50Ms', 'p95Ms', 'p99Ms']);
     expect($a['method'])->toBe('GET');
     expect($a['route'])->toBe('users/{id:int}');
     expect($a['hits'])->toBe(8.0);
     expect($a['errors'])->toBe(1.0);
-    expect($a['error_rate'])->toBe(0.125);
-    expect($a['avg_ms'])->toBe(800.0);
-    expect($a['max_ms'])->toBe(6000.0);
-    expect($a['p50_ms'])->toBe(Histogram::percentile($merged, 50, 6000.0));
-    expect($a['p95_ms'])->toBe(Histogram::percentile($merged, 95, 6000.0));
-    expect($a['p99_ms'])->toBe(Histogram::percentile($merged, 99, 6000.0));
-    expect($a['p95_ms'])->toBeGreaterThan(0.0);
+    expect($a['errorRate'])->toBe(0.125);
+    expect($a['avgMs'])->toBe(800.0);
+    expect($a['maxMs'])->toBe(6000.0);
+    expect($a['p50Ms'])->toBe(Histogram::percentile($merged, 50, 6000.0));
+    expect($a['p95Ms'])->toBe(Histogram::percentile($merged, 95, 6000.0));
+    expect($a['p99Ms'])->toBe(Histogram::percentile($merged, 99, 6000.0));
+    expect($a['p95Ms'])->toBeGreaterThan(0.0);
 
     $zero = $routes[4];
-    expect($zero['avg_ms'])->toBe(0.0);
-    expect($zero['error_rate'])->toBe(0.0);
-    expect($zero['p95_ms'])->toBe(0.0);
+    expect($zero['avgMs'])->toBe(0.0);
+    expect($zero['errorRate'])->toBe(0.0);
+    expect($zero['p95Ms'])->toBe(0.0);
 
     $one = $this->reader->routes($this->from, $this->to, 1);
     expect($one)->toHaveCount(1);
@@ -125,10 +125,10 @@ it('orders by the whitelisted column only', function () {
 
     expect($keys('hits'))->toBe(['GET health', 'POST orders', 'GET users/{id:int}', 'GET big', 'GET zero']);
     expect($keys('errors'))->toBe(['GET health', 'POST orders', 'GET users/{id:int}', 'GET big', 'GET zero']);
-    expect($keys('max_ms'))->toBe(['GET users/{id:int}', 'GET big', 'POST orders', 'GET health', 'GET zero']);
-    expect($keys('avg_ms'))->toBe(['GET big', 'GET users/{id:int}', 'POST orders', 'GET health', 'GET zero']);
+    expect($keys('maxMs'))->toBe(['GET users/{id:int}', 'GET big', 'POST orders', 'GET health', 'GET zero']);
+    expect($keys('avgMs'))->toBe(['GET big', 'GET users/{id:int}', 'POST orders', 'GET health', 'GET zero']);
     expect($keys('sum_ms; DROP TABLE psf_monitor_rollups'))->toBe($keys('sum_ms'));
-    expect($keys('qualquer'))->toBe($keys('sum_ms'));
+    expect($keys('qualquer'))->toBe($keys('sumMs'));
 
     expect((int) $this->pdo->query('SELECT COUNT(*) FROM psf_monitor_rollups')->fetchColumn())->toBe(7);
 });
@@ -175,7 +175,7 @@ it('returns empty for reversed or empty ranges and clamps limit', function () {
 
     $many = $this->reader->routes(readerAt('2026-10-24 13:00:00'), readerAt('2026-10-24 14:00:00'), 1_000_000, 'hits');
     expect($many)->toHaveCount(1000);
-    expect(array_filter($many, fn ($r) => $r['p50_ms'] <= 0.0))->toBe([]);
+    expect(array_filter($many, fn ($r) => $r['p50Ms'] <= 0.0))->toBe([]);
 });
 
 it('converts time zones to UTC', function () {
@@ -200,14 +200,14 @@ it('lists slow queries with their sample sql', function () {
 
     $queries = $this->reader->slowQueries($this->from, $this->to);
 
-    expect(array_column($queries, 'sql_hash'))->toBe(['hashA', 'hashB']);
+    expect(array_column($queries, 'sqlHash'))->toBe(['hashA', 'hashB']);
     $a = $queries[0];
-    expect(array_keys($a))->toBe(['sql_hash', 'sql', 'hits', 'avg_ms', 'max_ms', 'p95_ms']);
+    expect(array_keys($a))->toBe(['sqlHash', 'sql', 'hits', 'avgMs', 'maxMs', 'p95Ms']);
     expect($a['sql'])->toBe('SELECT novo');
     expect($a['hits'])->toBe(3.0);
-    expect($a['avg_ms'])->toBe(400 / 3);
-    expect($a['max_ms'])->toBe(300.0);
-    expect($a['p95_ms'])->toBe(Histogram::percentile([0, 0, 1, 1, 0, 1, 0, 0, 0, 0], 95, 300.0));
+    expect($a['avgMs'])->toBe(400 / 3);
+    expect($a['maxMs'])->toBe(300.0);
+    expect($a['p95Ms'])->toBe(Histogram::percentile([0, 0, 1, 1, 0, 1, 0, 0, 0, 0], 95, 300.0));
     expect($queries[1]['sql'])->toBe('SELECT b');
 
     expect($this->reader->slowQueries($this->from, $this->to, 1))->toHaveCount(1);
@@ -221,14 +221,14 @@ it('lists exceptions by class with last occurrence and message', function () {
     $exceptions = $this->reader->exceptions($this->from, $this->to);
 
     expect($exceptions)->toBe([
-        ['exception_class' => 'PDOException', 'hits' => 5.0, 'last_ts' => '2026-10-24 10:10:00', 'message' => 'banco'],
-        ['exception_class' => 'RuntimeException', 'hits' => 3.0, 'last_ts' => '2026-10-24 11:05:00', 'message' => 'nova'],
+        ['exceptionClass' => 'PDOException', 'hits' => 5.0, 'lastTs' => '2026-10-24 10:10:00', 'message' => 'banco'],
+        ['exceptionClass' => 'RuntimeException', 'hits' => 3.0, 'lastTs' => '2026-10-24 11:05:00', 'message' => 'nova'],
     ]);
 
     // Só a hora 10: a mensagem passa a ser a daquela hora.
     $only10 = $this->reader->exceptions($this->from, readerAt('2026-10-24 11:00:00'));
     expect($only10[1]['message'])->toBe('antiga');
-    expect($only10[1]['last_ts'])->toBe('2026-10-24 10:50:00');
+    expect($only10[1]['lastTs'])->toBe('2026-10-24 10:50:00');
 });
 
 it('builds the hourly throughput series in ascending order', function () {
@@ -239,9 +239,9 @@ it('builds the hourly throughput series in ascending order', function () {
     readerRollup($this->pdo, '2026-10-24 11:00:00', 'query', 'h', 50, 500, 10);
 
     expect($this->reader->throughput($this->from, $this->to))->toBe([
-        ['hour' => '2026-10-24 10:00:00', 'hits' => 4.0, 'errors' => 1.0, 'avg_ms' => 30.0],
-        ['hour' => '2026-10-24 11:00:00', 'hits' => 0.0, 'errors' => 0.0, 'avg_ms' => 0.0],
-        ['hour' => '2026-10-24 12:00:00', 'hits' => 4.0, 'errors' => 0.0, 'avg_ms' => 10.0],
+        ['hour' => '2026-10-24 10:00:00', 'hits' => 4.0, 'errors' => 1.0, 'avgMs' => 30.0],
+        ['hour' => '2026-10-24 11:00:00', 'hits' => 0.0, 'errors' => 0.0, 'avgMs' => 0.0],
+        ['hour' => '2026-10-24 12:00:00', 'hits' => 4.0, 'errors' => 0.0, 'avgMs' => 10.0],
     ]);
 });
 
@@ -250,10 +250,10 @@ it('survives a corrupted histogram', function () {
     readerRollup($this->pdo, '2026-10-24 10:00:00', 'query', 'h', 2, 20, 15, rawHistogram: '[1,2]', sample: 'SELECT 1');
 
     $routes = $this->reader->routes($this->from, $this->to);
-    expect($routes[0]['p95_ms'])->toBe(0.0);
-    expect($routes[0]['p50_ms'])->toBe(0.0);
-    expect($routes[0]['avg_ms'])->toBe(10.0);
-    expect($this->reader->slowQueries($this->from, $this->to)[0]['p95_ms'])->toBe(0.0);
+    expect($routes[0]['p95Ms'])->toBe(0.0);
+    expect($routes[0]['p50Ms'])->toBe(0.0);
+    expect($routes[0]['avgMs'])->toBe(10.0);
+    expect($this->reader->slowQueries($this->from, $this->to)[0]['p95Ms'])->toBe(0.0);
 });
 
 it('returns the raw detail of one request', function () {
@@ -267,9 +267,9 @@ it('returns the raw detail of one request', function () {
     $detail = $this->reader->request('abc');
 
     expect(array_keys($detail))->toBe(['request', 'queries', 'exceptions', 'external']);
-    expect($detail['request']['request_id'])->toBe('abc');
+    expect($detail['request']['requestId'])->toBe('abc');
     expect((int) $detail['request']['status'])->toBe(500);
-    expect(array_column($detail['queries'], 'sql_text'))->toBe(['SELECT primeiro', 'SELECT segundo']);
+    expect(array_column($detail['queries'], 'sqlText'))->toBe(['SELECT primeiro', 'SELECT segundo']);
     expect($detail['exceptions'])->toHaveCount(1);
     expect($detail['exceptions'][0]['message'])->toBe('falhou');
 
@@ -305,26 +305,26 @@ it('works end to end after a rollup run', function () {
     $users = $routes[0];
     expect($users['hits'])->toBe(12.0);
     expect($users['errors'])->toBe(1.0);
-    expect($users['error_rate'])->toBe(1 / 12);
-    expect($users['avg_ms'])->toBe((40 + 7000 + 3000) / 12);
-    expect($users['max_ms'])->toBe(3000.0);
-    expect($users['p50_ms'])->toBe(Histogram::percentile([0, 0, 1, 0, 0, 0, 10, 0, 1, 0], 50, 3000.0));
-    expect($users['p99_ms'])->toBeLessThanOrEqual(3000.0);
+    expect($users['errorRate'])->toBe(1 / 12);
+    expect($users['avgMs'])->toBe((40 + 7000 + 3000) / 12);
+    expect($users['maxMs'])->toBe(3000.0);
+    expect($users['p50Ms'])->toBe(Histogram::percentile([0, 0, 1, 0, 0, 0, 10, 0, 1, 0], 50, 3000.0));
+    expect($users['p99Ms'])->toBeLessThanOrEqual(3000.0);
 
     $queries = $reader->slowQueries($from, $to);
-    expect(array_column($queries, 'sql_hash'))->toBe(['qa', 'qb']);
+    expect(array_column($queries, 'sqlHash'))->toBe(['qa', 'qb']);
     expect($queries[0]['hits'])->toBe(2.0);
-    expect($queries[0]['avg_ms'])->toBe(140.0);
+    expect($queries[0]['avgMs'])->toBe(140.0);
     expect($queries[0]['sql'])->toBe('SELECT * FROM users WHERE id = ?');
 
     expect($reader->exceptions($from, $to))->toBe([
-        ['exception_class' => 'RuntimeException', 'hits' => 1.0, 'last_ts' => '2026-10-24 11:40:00', 'message' => 'boom'],
+        ['exceptionClass' => 'RuntimeException', 'hits' => 1.0, 'lastTs' => '2026-10-24 11:40:00', 'message' => 'boom'],
     ]);
 
     expect($reader->throughput($from, $to))->toBe([
-        ['hour' => '2026-10-24 10:00:00', 'hits' => 11.0, 'errors' => 0.0, 'avg_ms' => 640.0],
-        ['hour' => '2026-10-24 11:00:00', 'hits' => 2.0, 'errors' => 1.0, 'avg_ms' => 1510.0],
+        ['hour' => '2026-10-24 10:00:00', 'hits' => 11.0, 'errors' => 0.0, 'avgMs' => 640.0],
+        ['hour' => '2026-10-24 11:00:00', 'hits' => 2.0, 'errors' => 1.0, 'avgMs' => 1510.0],
     ]);
 
-    expect($reader->request('r3')['exceptions'][0]['exception_class'])->toBe('RuntimeException');
+    expect($reader->request('r3')['exceptions'][0]['exceptionClass'])->toBe('RuntimeException');
 });

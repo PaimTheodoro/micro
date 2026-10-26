@@ -52,16 +52,16 @@ it('ranks external calls by total time with merged percentiles', function () {
 
     $a = $items[0];
     $merged = [1, 1, 0, 2, 3, 0, 0, 0, 0, 1];
-    expect(array_keys($a))->toBe(['key', 'kind', 'target', 'hits', 'errors', 'error_rate', 'avg_ms', 'max_ms', 'p50_ms', 'p95_ms', 'p99_ms']);
+    expect(array_keys($a))->toBe(['key', 'kind', 'target', 'hits', 'errors', 'errorRate', 'avgMs', 'maxMs', 'p50Ms', 'p95Ms', 'p99Ms']);
     expect($a['kind'])->toBe('http');
     expect($a['target'])->toBe('api.com');
     expect($a['hits'])->toBe(8.0);
     expect($a['errors'])->toBe(1.0);
-    expect($a['error_rate'])->toBe(0.125);
-    expect($a['avg_ms'])->toBe(800.0);
-    expect($a['max_ms'])->toBe(6000.0);
-    expect($a['p95_ms'])->toBe(Histogram::percentile($merged, 95, 6000.0));
-    expect($a['p95_ms'])->toBeGreaterThan(0.0);
+    expect($a['errorRate'])->toBe(0.125);
+    expect($a['avgMs'])->toBe(800.0);
+    expect($a['maxMs'])->toBe(6000.0);
+    expect($a['p95Ms'])->toBe(Histogram::percentile($merged, 95, 6000.0));
+    expect($a['p95Ms'])->toBeGreaterThan(0.0);
 });
 
 it('splits kind and target at the first colon only', function () {
@@ -78,7 +78,7 @@ it('respects range, limit and a whitelisted orderBy', function () {
     expect(array_column($this->reader->external($this->from, $this->to, 0), 'key'))->toHaveCount(1);
     expect(array_column($this->reader->external($this->from, $this->to, 10, 'hits'), 'key')[0])->toBe('http:::1');
     expect(array_column($this->reader->external($this->from, $this->to, 10, 'errors'), 'key')[0])->toBe('http:::1');
-    expect(array_column($this->reader->external($this->from, $this->to, 10, 'max_ms'), 'key')[0])->toBe('http:api.com');
+    expect(array_column($this->reader->external($this->from, $this->to, 10, 'maxMs'), 'key')[0])->toBe('http:api.com');
     expect(array_column($this->reader->external($this->from, $this->to, 10, 'DROP TABLE x'), 'key')[0])->toBe('http:api.com');
 
     $only10 = $this->reader->external($this->from, new DateTimeImmutable('2026-10-24 11:00:00', new DateTimeZone('UTC')));
@@ -118,6 +118,6 @@ it('reads end to end from Rollup::run', function () {
     expect($items[0]['key'])->toBe('http:api.com');
     expect($items[0]['hits'])->toBe(4.0);
     expect($items[0]['errors'])->toBe(3.0);
-    expect($items[0]['avg_ms'])->toBe(80.0);
-    expect($items[0]['max_ms'])->toBe(100.0);
+    expect($items[0]['avgMs'])->toBe(80.0);
+    expect($items[0]['maxMs'])->toBe(100.0);
 });

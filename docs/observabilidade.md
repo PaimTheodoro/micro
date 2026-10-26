@@ -92,7 +92,7 @@ Se `settings.monitor` estiver ausente, ou `enabled` for falso, o monitor fica to
 
 ## Configuração
 
-Tudo em `config['settings']['monitor']`. Valores omitidos usam o default. Para chaves que são arrays (`sample`, `slow_ms`, `retention`, `breaker`, `api`) o merge é recursivo; passar um escalar no lugar de um desses arrays é ignorado (o default continua valendo).
+Tudo em `config['settings']['monitor']`. Valores omitidos usam o default. **As chaves são camelCase** (`rawDays`); as grafias snake_case antigas (`raw_days`, `slow_ms`, ...) seguem aceitas como alias, e se as duas aparecerem a camelCase vence. As colunas do banco continuam em snake_case. Para chaves que são arrays (`sample`, `slowMs`, `retention`, `breaker`, `api`) o merge é recursivo; passar um escalar no lugar de um desses arrays é ignorado (o default continua valendo).
 
 | Chave | Default | Efeito |
 |-------|---------|--------|
@@ -264,7 +264,71 @@ Protege a aplicação de um banco de monitoramento lento ou fora do ar:
 
 ### Notificações
 
-Com `'auto_migrate' => true`, o monitor instala as tabelas sozinho quando elas não existem. Regras:
+O monitor avisa (Slack, Teams, Discord, e-mail, webhook, log ou código seu) quando um request dá 500, lança exceção, termina em erro fatal, fica lento ou falha numa chamada externa. O framework traz o motor; **o projeto define como enviar e para quem**, em `settings.monitor.notifiers`:
+
+```php
+'monitor' => [
+    'enabled' => true,
+    'notifiers' => [
+        'slackOps' => [
+            'channel'         => 'slack',
+            'webhookUrl'      => getenv('SLACK_WEBHOOK_OPS'),
+            'mention'         => '<!here>',
+            'when'            => ['statusGte' => 500, 'fatal' => true, 'environments' => ['prd']],
+            'throttleSeconds' => 300,
+        ],
+        'pagamentos' => [
+            'channel' => 'email',
+            'to'      => ['dev@empresa.com', ['Financeiro', 'fin@empresa.com']],
+            'from'    => ['Monitor', 'monitor@empresa.com'],
+            'when'    => ['routes' => ['/v1/pagamentos/*'], 'exceptions' => true, 'slowRequest' => true],
+        ],
+        'pager' => [
+            'class'   => App\Alertas\PagerDuty::class,  // implements NotifierInterface
+            'options' => ['routingKey' => '...'],
+        ],
+        'debug' => ['callback' => fn (\Psf\Monitor\Notification\Notification $n) => error_log($n->text())],
+    ],
+],
+```
+
+**Entrada** (a chave é o nome, usado no throttle e no log): `channel` (`log`, `webhook`, `slack`, `teams`, `discord`, `email`) **ou** `class` (implementa `Psf\Monitor\Notification\NotifierInterface`; recebe as opções no construtor) **ou** `callback`; mais `when`, `throttleSeconds`, `enabled` (`false` desliga) e as opções do canal no mesmo nível (ou em `options`).
+
+| Canal | Opções |
+|-------|--------|
+| `webhook` | `webhookUrl`, `headers`, `secret` (assina o corpo: `X-Psf-Signature: sha256=<hmac>`), `timeoutSeconds` (3). Corpo: `Notification::toArray()` em JSON. |
+| `slack` / `teams` / `discord` | `webhookUrl`, `timeoutSeconds`; Slack também `mention`, `username`, `channel`. |
+| `email` | `to` (e-mails ou pares `[nome, e-mail]`), `from`, `subjectPrefix`, `smtp` (omitido = `config['smtp']`). Usa `Psf\Utils\Email` (PHPMailer). |
+| `log` | nenhuma: escreve no `error_log`. |
+
+**Quando dispara (`when`).** Basta **um** gatilho; sem nenhum, vale `statusGte: 500` + `fatal`:
+
+| Gatilho | Dispara quando |
+|---------|----------------|
+| `statusGte` | status >= o valor |
+| `statuses` | status está na lista (ex.: `[429, 503]`) |
+| `exceptions` | qualquer exceção registrada (inclusive as tratadas) |
+| `fatal` | erro fatal do PHP |
+| `slowRequest` / `slowQuery` / `slowExternal` | acima de `slowMs.request` / `.query` / `.external` |
+| `externalErrors` | chamada externa sem status ou >= 500 |
+
+Filtros (todos precisam passar): `routes` e `ignoreRoutes` (padrões `fnmatch` sobre o padrão da rota, ex.: `/v1/pagamentos/*`), `methods`, `environments`.
+
+**Throttle.** Um aviso por entrada e *fingerprint* (o `traceHash` da primeira exceção; sem exceção, rota + status) a cada `throttleSeconds` (padrão 300; `0` desliga). O aviso seguinte informa quantos iguais foram suprimidos. O estado fica em APCu (ou arquivo em `sys_get_temp_dir()`), portanto **vale por servidor**; para valer entre servidores, implemente `ThrottleInterface` (Redis, tabela...) e registre com `Dispatcher::useThrottle()`.
+
+**Garantias.**
+- Roda no shutdown, **depois** de liberar a resposta (`fastcgi_finish_request`): o envio não soma latência ao cliente. Sem FPM, o envio é visível ao cliente (como o flush).
+- Independe da amostragem, do `circuit breaker` e do banco: o aviso sai mesmo que o request não seja gravado. Só `enabled` precisa estar ligado.
+- Nunca lança: falha de um notificador vai ao `error_log` (`notificador '<nome>' falhou: <Classe>`, **sem** mensagem nem URL) e não impede os demais.
+- Os canais por webhook usam cURL próprio (timeout 3 s), então o envio não aparece como chamada externa da aplicação.
+- Custo sem `notifiers`: uma leitura de config por request.
+- O conteúdo do aviso (`Notification`) passa pela mesma limpeza do monitor: mensagens de `PDOException` e fatais sem valores, `storeExceptionMessage = false` esvazia as mensagens, nunca URL completa, query string, corpo ou headers. Inclui o `requestId`, para achar o request no `Reader`.
+
+`Notification` expõe `reasons`, `requestId`, `route`, `method`, `status`, `durationMs`, `env`, `release`, `userId`, `exceptions` (classe, mensagem, arquivo, linha, `traceHash`, `fatal`), `externalErrors`, `fingerprint`, `occurredAt`, `suppressed`, e os métodos `title()`, `text()` e `toArray()`.
+
+### `autoMigrate` (opt-in)
+
+Com `'autoMigrate' => true`, o monitor instala as tabelas sozinho quando elas não existem. Regras:
 
 - **Recusado em `prd`**: só quando `config['environment']` for **exatamente** `'prd'`. Outras grafias (`'production'`, `'PRD'`) **não** são tratadas como produção, e a ausência da chave conta como `dev`. Em `prd` o monitor registra uma linha de `error_log` e abre o breaker; o caminho de produção é `monitor:install`.
 - **Só no flush, depois da resposta**: roda no shutdown, então o usuário não espera a criação das tabelas (com FPM; sem ele, ver [Limites](#limites-e-cuidados-conhecidos)).
@@ -498,7 +562,7 @@ Os percentis (`Histogram::percentile`) são **estimativas**: o ponto do percenti
 
 ## Reader
 
-`Psf\Monitor\Reader` é a API de leitura (somente leitura) dos dados do monitor. Devolve arrays simples, com números convertidos para `float` (**sem arredondar**: arredonde na apresentação). Agregados vêm de `psf_monitor_rollups`; só `request()` lê as tabelas brutas.
+`Psf\Monitor\Reader` é a API de leitura (somente leitura) dos dados do monitor. Devolve arrays simples, com chaves **camelCase** (`errorRate`, `avgMs`, `sqlHash`; as colunas do banco são snake_case) e números convertidos para `float` (**sem arredondar**: arredonde na apresentação). Agregados vêm de `psf_monitor_rollups`; só `request()` lê as tabelas brutas.
 
 ```php
 use Psf\Monitor\Reader;
@@ -516,20 +580,20 @@ Construtor: `__construct(?string $database = null, ?\PDO $pdo = null)`. Sem `$pd
 
 | Método | Retorno |
 |--------|---------|
-| `routes(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20, string $orderBy = 'sum_ms'): array` | Lista de `['key', 'method', 'route', 'hits', 'errors', 'error_rate', 'avg_ms', 'max_ms', 'p50_ms', 'p95_ms', 'p99_ms']`, ordenada de forma decrescente por `$orderBy`. |
-| `external(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20, string $orderBy = 'sum_ms'): array` | Chamadas externas por `kind:target`, com as mesmas regras de `routes()`: lista de `['key', 'kind', 'target', 'hits', 'errors', 'error_rate', 'avg_ms', 'max_ms', 'p50_ms', 'p95_ms', 'p99_ms']`, ordenada de forma decrescente por `$orderBy`. |
-| `slowQueries(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20): array` | Lista de `['sql_hash', 'sql', 'hits', 'avg_ms', 'max_ms', 'p95_ms']`, por tempo total (`sum_ms`) decrescente. `sql` é o `sample_text` da hora mais recente do hash (`null` se ausente). |
-| `exceptions(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20): array` | Lista de `['exception_class', 'hits', 'last_ts', 'message']`, por `hits` decrescente. `last_ts` é a maior ocorrência (`Y-m-d H:i:s`, UTC; `null` se ausente); `message` é o `sample_text` da hora mais recente da classe. |
-| `throughput(DateTimeInterface $from, DateTimeInterface $to): array` | Série por hora, em ordem crescente, da metric `request`: `['hour' (Y-m-d H:i:s, UTC), 'hits', 'errors', 'avg_ms']`. |
+| `routes(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20, string $orderBy = 'sumMs'): array` | Lista de `['key', 'method', 'route', 'hits', 'errors', 'errorRate', 'avgMs', 'maxMs', 'p50Ms', 'p95Ms', 'p99Ms']`, ordenada de forma decrescente por `$orderBy`. |
+| `external(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20, string $orderBy = 'sumMs'): array` | Chamadas externas por `kind:target`, com as mesmas regras de `routes()`: lista de `['key', 'kind', 'target', 'hits', 'errors', 'errorRate', 'avgMs', 'maxMs', 'p50Ms', 'p95Ms', 'p99Ms']`, ordenada de forma decrescente por `$orderBy`. |
+| `slowQueries(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20): array` | Lista de `['sqlHash', 'sql', 'hits', 'avgMs', 'maxMs', 'p95Ms']`, por tempo total (`sumMs`) decrescente. `sql` é o `sample_text` da hora mais recente do hash (`null` se ausente). |
+| `exceptions(DateTimeInterface $from, DateTimeInterface $to, int $limit = 20): array` | Lista de `['exceptionClass', 'hits', 'lastTs', 'message']`, por `hits` decrescente. `lastTs` é a maior ocorrência (`Y-m-d H:i:s`, UTC; `null` se ausente); `message` é o `sample_text` da hora mais recente da classe. |
+| `throughput(DateTimeInterface $from, DateTimeInterface $to): array` | Série por hora, em ordem crescente, da metric `request`: `['hour' (Y-m-d H:i:s, UTC), 'hits', 'errors', 'avgMs']`. |
 | `request(string $requestId): ?array` | `['request' => [...], 'queries' => [...], 'exceptions' => [...], 'external' => [...]]` ou `null`. |
 
 Detalhes:
 
-- `orderBy` de `routes()` e de `external()` aceita **somente** `sum_ms`, `hits`, `errors`, `max_ms`, `avg_ms`; qualquer outro valor (inclusive entrada do usuário) vira `sum_ms`. O valor nunca entra no SQL.
-- `routes()`: `key` é o `metric_key` (`GET users/{id:int}`); `method` e `route` são a chave separada no primeiro espaço. `error_rate = errors / hits` e `avg_ms = sum_ms / hits` (0.0 se `hits = 0`); `max_ms` é o maior do período; p50/p95/p99 vêm do histograma somado do período (ver [Histograma e percentis](#histograma-e-percentis)).
-- `external()`: `key` é o `metric_key` (`http:api.exemplo.com`); `kind` e `target` são a chave separada no **primeiro** `:` (o `target` pode conter `:`, como um host IPv6). `error_rate`, `avg_ms`, `max_ms` e os percentis seguem a regra de `routes()`; `errors` conta `status IS NULL OR status >= 500` (4xx não é erro).
+- `orderBy` de `routes()` e de `external()` aceita **somente** `sumMs`, `hits`, `errors`, `maxMs`, `avgMs`; qualquer outro valor (inclusive entrada do usuário) vira `sumMs`. O valor nunca entra no SQL. As grafias snake_case antigas (`sum_ms`, `avg_ms`...) seguem aceitas como alias.
+- `routes()`: `key` é o `metric_key` (`GET users/{id:int}`); `method` e `route` são a chave separada no primeiro espaço. `errorRate = errors / hits` e `avgMs = sumMs / hits` (0.0 se `hits = 0`); `maxMs` é o maior do período; p50/p95/p99 vêm do histograma somado do período (ver [Histograma e percentis](#histograma-e-percentis)).
+- `external()`: `key` é o `metric_key` (`http:api.exemplo.com`); `kind` e `target` são a chave separada no **primeiro** `:` (o `target` pode conter `:`, como um host IPv6). `errorRate`, `avgMs`, `maxMs` e os percentis seguem a regra de `routes()`; `errors` conta `status IS NULL OR status >= 500` (4xx não é erro).
 - `throughput()` **omite as horas sem nenhum registro** de rollup (sem tráfego gravado ou ainda não agregadas): quem desenha um gráfico precisa preencher as lacunas.
-- `request($id)` lê as tabelas **brutas**: só existe dentro da retenção bruta (`raw_days`; ver o [teto](#retenção-e-manutenção) do prune) e para requests que foram gravados (amostrados); devolve `null` fora disso e para id vazio. A chave `external` (chamadas externas do request, ordenadas por `id`) é **adicional**: as demais não mudaram. As linhas de `request`, `queries`, `exceptions` e `external` vêm **como o driver as devolve** (`SELECT *`, em ordem de `id`): os tipos (int/string/float) variam conforme o driver.
+- `request($id)` lê as tabelas **brutas**: só existe dentro da retenção bruta (`rawDays`; ver o [teto](#retenção-e-manutenção) do prune) e para requests que foram gravados (amostrados); devolve `null` fora disso e para id vazio. A chave `external` (chamadas externas do request, ordenadas por `id`) é **adicional**: as demais não mudaram. As linhas de `request`, `queries`, `exceptions` e `external` vêm de `SELECT *`, em ordem de `id`, **com as colunas em camelCase** (`requestId`, `durationMs`, `sqlText`, `exceptionClass`...): os tipos (int/string/float) variam conforme o driver.
 - Os agregados só existem para horas já agregadas (atraso de até ~1 h 5 min): a hora corrente nunca aparece.
 
 Exemplo, num endpoint do próprio projeto (a autenticação e a autorização são do projeto: o framework não expõe estes dados por conta própria):
@@ -549,9 +613,9 @@ public function rotas(): void
     $rotas = array_map(fn (array $r): array => [
         'rota'  => $r['key'],
         'hits'  => round($r['hits']),
-        'erros' => round($r['error_rate'] * 100, 2),   // arredonde na apresentação
-        'p95'   => round($r['p95_ms'], 1),
-    ], $reader->routes($from, $to, 10, 'sum_ms'));
+        'erros' => round($r['errorRate'] * 100, 2),   // arredonde na apresentação
+        'p95'   => round($r['p95Ms'], 1),
+    ], $reader->routes($from, $to, 10, 'sumMs'));
 
     Http::response('OK', [
         'rotas'      => $rotas,
@@ -579,10 +643,10 @@ Para o detalhe de um request reclamado por um usuário, peça o `X-Request-Id` d
 
 | `endpoint` | Devolve (em `dados`) | Parâmetros |
 |------------|----------------------|------------|
-| `routes` | `Reader::routes()` | `from`, `to`, `limit`, `order_by` |
+| `routes` | `Reader::routes()` | `from`, `to`, `limit`, `orderBy` |
 | `queries` | `Reader::slowQueries()` | `from`, `to`, `limit` |
 | `exceptions` | `Reader::exceptions()` | `from`, `to`, `limit` |
-| `external` | `Reader::external()` | `from`, `to`, `limit`, `order_by` |
+| `external` | `Reader::external()` | `from`, `to`, `limit`, `orderBy` |
 | `throughput` | `Reader::throughput()` | `from`, `to` |
 | `request` | `Reader::request()` (`request`, `queries`, `exceptions`, `external`) | `id` (obrigatório) |
 
@@ -592,7 +656,7 @@ Outro `endpoint` responde `404` (`Endpoint desconhecido`).
 
 - **`from` / `to`**: ISO-8601 com `T` ou espaço (`2026-10-25T10:00:00Z`, `2026-10-25T07:00:00-03:00`, `2026-10-25 10:00:00`), com fração de segundo opcional e fuso opcional (`Z`, `±HH:MM` ou `±HHMM`); **sem fuso vale UTC**. A data é convertida para UTC e o intervalo segue as regras do `Reader` (semiaberto, por hora). O formato é estrito (nada de texto livre nem data sem hora; datas impossíveis como `2026-13-45` são recusadas). Padrão: `to` = agora e `from` = `to − 24 h`. Inválidos ou `from >= to` → `422`.
 - **`limit`**: inteiro de 1 a 1000 (ou string só de dígitos); padrão 20. Inválido → `422`. Não vale para `throughput` e `request`.
-- **`order_by`**: só em `routes` e `external`; um de `sum_ms` (padrão), `hits`, `errors`, `max_ms`, `avg_ms`. Outro valor → `422`. Nos demais endpoints é ignorado.
+- **`orderBy`**: só em `routes` e `external` (o nome legado `order_by` e os valores `sum_ms`, `avg_ms`... também valem; `orderBy` vence se vierem os dois); um de `sumMs` (padrão), `hits`, `errors`, `maxMs`, `avgMs`. Outro valor → `422`. Nos demais endpoints é ignorado.
 - **`id`**: só em `request`; obrigatório, string que casa com `^[A-Za-z0-9-]{8,64}$` (o `X-Request-Id`). Fora do formato → `422`; id válido mas sem registro (não amostrado ou fora da retenção bruta) → `404`.
 
 ### Respostas
@@ -601,10 +665,10 @@ Outro `endpoint` responde `404` (`Endpoint desconhecido`).
 |--------|--------|----------|
 | `200` | Sucesso | `''` (vazia) |
 | `404` | API desligada (`api.enabled`), endpoint desconhecido ou `request` inexistente | `API do monitor desabilitada`, `Endpoint desconhecido` ou `Requisição não encontrada` |
-| `422` | Parâmetro inválido (`from`, `to`, intervalo, `limit`, `order_by`, `id`) | `Parâmetro <nome> inválido` ou `Intervalo inválido: from deve ser anterior a to` |
+| `422` | Parâmetro inválido (`from`, `to`, intervalo, `limit`, `orderBy`, `id`) | `Parâmetro <nome> inválido` ou `Intervalo inválido: from deve ser anterior a to` |
 | `500` | Falha ao consultar (por exemplo, banco do monitor fora do ar) | `Erro ao consultar o monitor` |
 
-**Privacidade das respostas.** Nenhum texto de erro de banco ou de exceção vaza: qualquer falha vira `500` com a mensagem fixa acima (a mensagem original pode conter DSN, host ou usuário). Os dados devolvidos são os mesmos do `Reader` (rotas, SQL normalizado, mensagens de exceção já gravadas, rótulos seguros de chamadas externas), por isso a autenticação e a autorização do endpoint são essenciais: o framework não expõe estes dados por conta própria. Os parâmetros nunca entram no SQL (`order_by` só escolhe numa lista fixa).
+**Privacidade das respostas.** Nenhum texto de erro de banco ou de exceção vaza: qualquer falha vira `500` com a mensagem fixa acima (a mensagem original pode conter DSN, host ou usuário). Os dados devolvidos são os mesmos do `Reader` (rotas, SQL normalizado, mensagens de exceção já gravadas, rótulos seguros de chamadas externas), por isso a autenticação e a autorização do endpoint são essenciais: o framework não expõe estes dados por conta própria. Os parâmetros nunca entram no SQL (`orderBy` só escolhe numa lista fixa).
 
 ### Exemplo de controller do projeto
 
@@ -619,7 +683,7 @@ use Psf\Monitor\Api\MonitorApi;
 
 class MonitorController extends ControllerBase
 {
-    // GET /v1/admin/monitor/routes?limit=10&order_by=errors
+    // GET /v1/admin/monitor/routes?limit=10&orderBy=errors
     // GET /v1/admin/monitor/external?from=2026-10-25T00:00:00Z
     // GET /v1/admin/monitor/request?id=<X-Request-Id>
     #[Router(method: 'GET', path: '/admin/monitor/{endpoint:string}', version: 1, middlewares: ['authentication'])]

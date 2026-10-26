@@ -2,6 +2,7 @@
 
 namespace Psf\Monitor\Api;
 
+use Psf\Helper\ConfigKeys;
 use Psf\Monitor\Config;
 use Psf\Monitor\Reader;
 
@@ -15,7 +16,7 @@ use Psf\Monitor\Reader;
 final class MonitorApi
 {
     private const ENDPOINTS = ['routes', 'queries', 'exceptions', 'external', 'throughput', 'request'];
-    private const ORDERS    = ['sum_ms', 'hits', 'errors', 'max_ms', 'avg_ms'];
+    private const ORDERS    = ['sumMs', 'hits', 'errors', 'maxMs', 'avgMs'];
     private const DEFAULT_LIMIT = 20;
     private const MAX_LIMIT     = 1000;
 
@@ -85,11 +86,13 @@ final class MonitorApi
         }
 
         if ($endpoint === 'routes' || $endpoint === 'external') {
-            $order = 'sum_ms';
-            if (array_key_exists('order_by', $params)) {
-                $order = $params['order_by'];
-                if (!is_string($order) || !in_array($order, self::ORDERS, true)) {
-                    return ['Parâmetro order_by inválido', [], 422];
+            $order = 'sumMs';
+            // `orderBy` (camelCase) vence o alias legado `order_by`; o valor aceita `sumMs` ou `sum_ms`
+            $orderKey = array_key_exists('orderBy', $params) ? 'orderBy' : (array_key_exists('order_by', $params) ? 'order_by' : null);
+            if ($orderKey !== null) {
+                $order = is_string($params[$orderKey]) ? ConfigKeys::camelKey($params[$orderKey]) : null;
+                if ($order === null || !in_array($order, self::ORDERS, true)) {
+                    return ['Parâmetro orderBy inválido', [], 422];
                 }
             }
 

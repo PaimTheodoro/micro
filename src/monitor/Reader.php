@@ -5,6 +5,7 @@ namespace Psf\Monitor;
 use Psf\Database\Dialect\DialectFactory;
 use Psf\Database\Dialect\DialectInterface;
 use Psf\Enumerators\DBDriver;
+use Psf\Helper\ConfigKeys;
 
 /**
  * API de leitura (somente leitura) dos dados do monitor.
@@ -34,16 +35,16 @@ final class Reader
 
     /**
      * Whitelist de ordenação de `routes()`: cada opção mapeia para uma expressão
-     * SQL fixa — o valor recebido nunca é interpolado. `avg_ms` é calculado em
+     * SQL fixa — o valor recebido nunca é interpolado. `avgMs` é calculado em
      * SQL com guarda de divisão por zero; o `* 1.0` evita divisão inteira no
      * SQLite (colunas decimais podem ser guardadas como INTEGER lá).
      */
     private const ROUTE_ORDER = [
-        'sum_ms' => 'SUM({sum_ms})',
+        'sumMs'  => 'SUM({sum_ms})',
         'hits'   => 'SUM({hits})',
         'errors' => 'SUM({errors})',
-        'max_ms' => 'MAX({max_ms})',
-        'avg_ms' => 'CASE WHEN SUM({hits}) > 0 THEN SUM({sum_ms}) * 1.0 / SUM({hits}) ELSE 0 END',
+        'maxMs'  => 'MAX({max_ms})',
+        'avgMs'  => 'CASE WHEN SUM({hits}) > 0 THEN SUM({sum_ms}) * 1.0 / SUM({hits}) ELSE 0 END',
     ];
 
     private ?DialectInterface $dialect = null;
@@ -60,11 +61,11 @@ final class Reader
 
     /**
      * Rotas (metric `request`) ordenadas de forma decrescente por `$orderBy`
-     * (`sum_ms|hits|errors|max_ms|avg_ms`; qualquer outro valor vira `sum_ms`).
+     * (`sumMs|hits|errors|maxMs|avgMs`; qualquer outro valor vira `sumMs`; o alias legado `sum_ms` etc. também vale).
      *
-     * @return array<int, array{key: string, method: string, route: string, hits: float, errors: float, error_rate: float, avg_ms: float, max_ms: float, p50_ms: float, p95_ms: float, p99_ms: float}>
+     * @return array<int, array{key: string, method: string, route: string, hits: float, errors: float, errorRate: float, avgMs: float, maxMs: float, p50Ms: float, p95Ms: float, p99Ms: float}>
      */
-    public function routes(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 20, string $orderBy = 'sum_ms'): array
+    public function routes(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 20, string $orderBy = 'sumMs'): array
     {
         $items = $this->ranking('request', $from, $to, $limit, $orderBy);
         foreach ($items as &$item) {
@@ -83,9 +84,9 @@ final class Reader
      * `kind`/`target` são separados no PRIMEIRO `:` da chave (o alvo pode ter `:`,
      * ex.: host IPv6).
      *
-     * @return array<int, array{key: string, kind: string, target: string, hits: float, errors: float, error_rate: float, avg_ms: float, max_ms: float, p50_ms: float, p95_ms: float, p99_ms: float}>
+     * @return array<int, array{key: string, kind: string, target: string, hits: float, errors: float, errorRate: float, avgMs: float, maxMs: float, p50Ms: float, p95Ms: float, p99Ms: float}>
      */
-    public function external(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 20, string $orderBy = 'sum_ms'): array
+    public function external(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 20, string $orderBy = 'sumMs'): array
     {
         $items = $this->ranking('external', $from, $to, $limit, $orderBy);
         foreach ($items as &$item) {
@@ -101,7 +102,7 @@ final class Reader
      * Miolo comum de `routes()` e `external()`: top-N de uma métrica com taxa de
      * erro, média e percentis do histograma fundido (só do top-N).
      *
-     * @return array<int, array{key: string, hits: float, errors: float, error_rate: float, avg_ms: float, max_ms: float, p50_ms: float, p95_ms: float, p99_ms: float}>
+     * @return array<int, array{key: string, hits: float, errors: float, errorRate: float, avgMs: float, maxMs: float, p50Ms: float, p95Ms: float, p99Ms: float}>
      */
     private function ranking(string $metric, \DateTimeInterface $from, \DateTimeInterface $to, int $limit, string $orderBy): array
     {
@@ -110,7 +111,8 @@ final class Reader
             return [];
         }
 
-        $order = self::ROUTE_ORDER[$orderBy] ?? self::ROUTE_ORDER['sum_ms'];
+        // Aceita camelCase (`sumMs`) e o alias legado (`sum_ms`); fora da lista vira `sumMs`
+        $order = self::ROUTE_ORDER[ConfigKeys::camelKey($orderBy)] ?? self::ROUTE_ORDER['sumMs'];
         $rows  = $this->aggregate($metric, $range, $this->limit($limit), $order);
         $hists = $this->histograms($metric, $range, array_column($rows, 'k'));
 
@@ -126,12 +128,12 @@ final class Reader
                 'key'        => $key,
                 'hits'       => $hits,
                 'errors'     => $errors,
-                'error_rate' => $this->ratio($errors, $hits),
-                'avg_ms'     => $this->ratio((float) $row['sum_ms'], $hits),
-                'max_ms'     => $maxMs,
-                'p50_ms'     => Histogram::percentile($hist, 50, $maxMs),
-                'p95_ms'     => Histogram::percentile($hist, 95, $maxMs),
-                'p99_ms'     => Histogram::percentile($hist, 99, $maxMs),
+                'errorRate' => $this->ratio($errors, $hits),
+                'avgMs'      => $this->ratio((float) $row['sum_ms'], $hits),
+                'maxMs'      => $maxMs,
+                'p50Ms'      => Histogram::percentile($hist, 50, $maxMs),
+                'p95Ms'      => Histogram::percentile($hist, 95, $maxMs),
+                'p99Ms'      => Histogram::percentile($hist, 99, $maxMs),
             ];
         }
         return $out;
@@ -141,7 +143,7 @@ final class Reader
      * Queries (metric `query`) por `sql_hash`, ordenadas por tempo total
      * decrescente; `sql` é o `sample_text` da hora mais recente do hash.
      *
-     * @return array<int, array{sql_hash: string, sql: ?string, hits: float, avg_ms: float, max_ms: float, p95_ms: float}>
+     * @return array<int, array{sqlHash: string, sql: ?string, hits: float, avgMs: float, maxMs: float, p95Ms: float}>
      */
     public function slowQueries(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 20): array
     {
@@ -150,7 +152,7 @@ final class Reader
             return [];
         }
 
-        $rows  = $this->aggregate('query', $range, $this->limit($limit), self::ROUTE_ORDER['sum_ms']);
+        $rows  = $this->aggregate('query', $range, $this->limit($limit), self::ROUTE_ORDER['sumMs']);
         $keys  = array_column($rows, 'k');
         $hists = $this->histograms('query', $range, $keys);
         $texts = $this->latestTexts('query', $rows);
@@ -161,12 +163,12 @@ final class Reader
             $hits  = (float) $row['hits'];
             $maxMs = (float) $row['max_ms'];
             $out[] = [
-                'sql_hash' => $key,
+                'sqlHash' => $key,
                 'sql'      => $texts[$key] ?? null,
                 'hits'     => $hits,
-                'avg_ms'   => $this->ratio((float) $row['sum_ms'], $hits),
-                'max_ms'   => $maxMs,
-                'p95_ms'   => Histogram::percentile($hists[$key] ?? Histogram::empty(), 95, $maxMs),
+                'avgMs'    => $this->ratio((float) $row['sum_ms'], $hits),
+                'maxMs'    => $maxMs,
+                'p95Ms'    => Histogram::percentile($hists[$key] ?? Histogram::empty(), 95, $maxMs),
             ];
         }
         return $out;
@@ -174,10 +176,10 @@ final class Reader
 
     /**
      * Exceções (metric `exception`) por classe, ordenadas por `hits`
-     * decrescente; `last_ts` é a maior ocorrência e `message` o `sample_text`
+     * decrescente; `lastTs` é a maior ocorrência e `message` o `sample_text`
      * da hora mais recente da classe.
      *
-     * @return array<int, array{exception_class: string, hits: float, last_ts: ?string, message: ?string}>
+     * @return array<int, array{exceptionClass: string, hits: float, lastTs: ?string, message: ?string}>
      */
     public function exceptions(\DateTimeInterface $from, \DateTimeInterface $to, int $limit = 20): array
     {
@@ -193,9 +195,9 @@ final class Reader
         foreach ($rows as $row) {
             $key   = (string) $row['k'];
             $out[] = [
-                'exception_class' => $key,
+                'exceptionClass' => $key,
                 'hits'            => (float) $row['hits'],
-                'last_ts'         => $this->normalizeTs($row['last_ts']),
+                'lastTs'           => $this->normalizeTs($row['last_ts']),
                 'message'         => $texts[$key] ?? null,
             ];
         }
@@ -206,7 +208,7 @@ final class Reader
      * Série por hora (ordem crescente) da metric `request`. Horas sem nenhum
      * registro de rollup não aparecem (a série não é preenchida com zeros).
      *
-     * @return array<int, array{hour: ?string, hits: float, errors: float, avg_ms: float}>
+     * @return array<int, array{hour: ?string, hits: float, errors: float, avgMs: float}>
      */
     public function throughput(\DateTimeInterface $from, \DateTimeInterface $to): array
     {
@@ -229,7 +231,7 @@ final class Reader
                 'hour'   => $this->normalizeTs($row['bh']),
                 'hits'   => $hits,
                 'errors' => (float) $row['errors'],
-                'avg_ms' => $this->ratio((float) $row['sum_ms'], $hits),
+                'avgMs' => $this->ratio((float) $row['sum_ms'], $hits),
             ];
         }
         return $out;
@@ -375,7 +377,9 @@ final class Reader
         $stmt->execute([$requestId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $stmt->closeCursor();
-        return $rows;
+
+        // Colunas em snake_case no banco; camelCase na saída
+        return array_map(static fn (array $row): array => ConfigKeys::camelize($row), $rows);
     }
 
     /**

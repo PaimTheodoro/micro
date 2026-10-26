@@ -96,10 +96,10 @@ it('serves every endpoint with the controller response shape', function (string 
     expect($res[2])->toBe(200);
 })->with([
     ['routes', []],
-    ['routes', ['order_by' => 'hits', 'limit' => '5']],
+    ['routes', ['orderBy' => 'hits', 'limit' => '5']],
     ['queries', ['limit' => 10]],
     ['exceptions', []],
-    ['external', ['order_by' => 'avg_ms']],
+    ['external', ['orderBy' => 'avgMs']],
     ['throughput', []],
     ['request', ['id' => 'req-12345678']],
 ]);
@@ -142,7 +142,7 @@ it('rejects hostile parameters with 422', function (string $endpoint, array $par
     ['routes', ['limit' => '-1']],
     ['routes', ['limit' => "5\n"]],
     ['routes', ['order_by' => 'sum_ms; DROP TABLE x']],
-    ['external', ['order_by' => 'nada']],
+    ['external', ['orderBy' => 'nada']],
     ['request', ['id' => '']],
     ['request', ['id' => "a'b"]],
     ['request', ['id' => 'curto']],
@@ -152,7 +152,7 @@ it('rejects hostile parameters with 422', function (string $endpoint, array $par
 ]);
 
 it('ignores order_by outside routes and external', function () {
-    expect($this->api->handle('queries', ['order_by' => 'lixo'])[2])->toBe(200);
+    expect($this->api->handle('queries', ['orderBy' => 'lixo'])[2])->toBe(200);
 });
 
 it('returns 404 for an unknown request id and an unknown endpoint', function () {
@@ -199,7 +199,7 @@ it('converts time zones to UTC', function () {
 });
 
 it('never throws', function (mixed $value) {
-    foreach (['from', 'to', 'limit', 'order_by', 'id'] as $key) {
+    foreach (['from', 'to', 'limit', 'orderBy', 'id'] as $key) {
         foreach (['routes', 'external', 'request', 'throughput'] as $endpoint) {
             $res = $this->api->handle($endpoint, [$key => $value, 'id' => $key === 'id' ? $value : 'req-12345678']);
             expect($res[2])->toBeIn([200, 404, 422]);
@@ -234,4 +234,17 @@ it('logs only the exception class on the generic 500', function () {
     expect($out)->toContain('[PSF][monitor]')->toContain('PDOException')
         ->not->toContain('secret-host')->not->toContain('hunter2')->not->toContain('segredo');
     expect(substr_count($out, '[PSF][monitor]'))->toBe(1);
+});
+
+it('still accepts the legacy order_by parameter and snake_case values', function () {
+    expect($this->api->handle('routes', ['order_by' => 'avg_ms'])[2])->toBe(200)
+        ->and($this->api->handle('routes', ['order_by' => 'sum_ms; DROP TABLE x'])[2])->toBe(422)
+        ->and($this->api->handle('routes', ['orderBy' => 'hits', 'order_by' => 'lixo'])[2])->toBe(200);
+});
+
+it('returns camelCase keys in the request detail', function () {
+    [, $data] = $this->api->handle('request', ['id' => 'req-12345678']);
+
+    expect($data['request'])->toHaveKeys(['requestId', 'durationMs', 'sampleWeight'])
+        ->and($data['queries'][0])->toHaveKey('sqlText');
 });

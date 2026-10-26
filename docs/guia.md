@@ -939,7 +939,7 @@ use Psf\Monitor\Reader;
 $reader = new Reader();
 $to     = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 $from   = $to->modify('-24 hours');
-$rotas   = $reader->routes($from, $to, 10);           // hits, error_rate, avg_ms, p50/p95/p99...
+$rotas   = $reader->routes($from, $to, 10);           // hits, errorRate, avgMs, p50Ms/p95Ms/p99Ms...
 $detalhe = $reader->request('valor-do-X-Request-Id'); // linhas brutas de um request
 ```
 
