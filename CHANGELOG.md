@@ -4,6 +4,23 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Não lançado]
 
+## [0.1.1] - 2026-10-26
+
+### Novidades
+
+- **Notificações do monitor** (`settings.monitor.notifiers`): avisos de 500, exceção, erro fatal, request/query/chamada externa lenta e falha em chamada externa, por Slack, Teams, Discord, e-mail, webhook (com assinatura HMAC opcional), log, classe própria (`NotifierInterface`) ou callback. Regras `when` com filtros por rota, método e ambiente, e throttle por *fingerprint* (`ThrottleInterface` substituível). Roda depois de liberar a resposta, independe de amostragem, do breaker e do banco, e nunca lança. Ver [docs/observabilidade.md](docs/observabilidade.md#notificações).
+- **`Request::timeout($segundos, $conexao = null)`** define timeouts por requisição (padrões 30 s e 5 s, em `Request::DEFAULT_TIMEOUT` e `DEFAULT_CONNECT_TIMEOUT`). `Http::request()` (depreciado) ganhou os parâmetros opcionais `$timeout` e `$connectTimeout`; antes não tinha limite algum.
+
+### ⚠️ Mudanças de comportamento (leia antes de atualizar)
+
+- **`JWT::verify()` / `decode($token, true)` recusam token sem `exp`.** Passe a emitir `exp` ou defina `'jwt' => ['require_exp' => false]` para aceitar tokens legados.
+- **Saídas do `Reader` e da `MonitorApi` em camelCase** (sem alias): `errorRate`, `avgMs`, `maxMs`, `p50Ms`, `p95Ms`, `p99Ms`, `sqlHash`, `exceptionClass`, `lastTs`; as linhas de `Reader::request()` também (`requestId`, `durationMs`, `sqlText`...). Quem lê as chaves antigas (`error_rate`, `p95_ms`...) precisa migrar. O parâmetro `orderBy` aceita `sumMs|hits|errors|maxMs|avgMs`; `order_by` e `sum_ms`, `avg_ms`... seguem valendo como alias. A mensagem de erro passa a ser `Parâmetro orderBy inválido`.
+- **A `description` das rotas é escapada** na página de documentação da API (HTML nela aparece como texto).
+
+### Padrão camelCase na configuração
+
+- As chaves de `settings.monitor` e `settings.cors` são camelCase (`rawDays`, `aggregateDays`, `slowMs`, `maxEventsPerRequest`, `cooldownSeconds`, `connectTimeout`, `exposeRequestId`, `storeUser`, `userIdProperty`, `autoMigrate`, `storeExceptionMessage`, `maxAge`, `exposeHeaders`). **As grafias snake_case continuam aceitas como alias** (`Psf\Helper\ConfigKeys`); se as duas aparecerem, a camelCase vence. Colunas e tabelas do banco seguem em snake_case. Mensagens de erro e docs usam a nova grafia (ex.: `rawDays inválido: ...`).
+
 ## [0.1.0] - 2026-10-25
 
 - Licença declarada como proprietária (`proprietary` no `composer.json` e arquivo `LICENSE`); antes o `composer.json` dizia MIT.
