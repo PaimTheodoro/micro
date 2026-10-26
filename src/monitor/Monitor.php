@@ -2,6 +2,7 @@
 
 namespace Psf\Monitor;
 
+use Psf\Monitor\Notification\{Dispatcher, Notification};
 use Psf\Monitor\Sinks\DatabaseSink;
 use Psf\Monitor\Sinks\SinkInterface;
 
@@ -44,6 +45,7 @@ final class Monitor
     private static bool $booted = false;
     private static bool $flushed = false;
     private static bool $ignored = false;
+    private static bool $responseFinished = false;
 
     /**
      * O shutdown é registrado uma única vez por processo; `reset()` não limpa
@@ -94,6 +96,7 @@ final class Monitor
 
             self::$booted     = true;
             self::$flushed    = false;
+            self::$responseFinished = false;
             self::$bootMethod = self::stringOr($method ?? ($_SERVER['REQUEST_METHOD'] ?? null), 'GET');
             self::$start      = is_numeric($_SERVER['REQUEST_TIME_FLOAT'] ?? null)
                 ? (float) $_SERVER['REQUEST_TIME_FLOAT']
@@ -409,6 +412,10 @@ final class Monitor
             }
 
             $buffer = self::$buffer;
+
+            // Avisos valem para todo request notável: independem da amostragem e do breaker
+            self::notify($status, $durationMs, $buffer, $start);
+
             $weight = Sampler::weight(
                 $status,
                 $durationMs,
@@ -464,11 +471,13 @@ final class Monitor
     {
         self::$booted     = false;
         self::$flushed    = false;
+        self::$responseFinished = false;
         self::$ignored    = false;
         self::$requestId  = null;
         self::$start      = null;
         self::$bootMethod = null;
         self::$context    = [];
+        Dispatcher::reset();
         self::$sink       = null;
         self::$breaker    = null;
         self::$migrator   = null;
@@ -504,6 +513,12 @@ final class Monitor
      */
     private static function finishResponse(): void
     {
+        // Notificação e gravação podem pedir; a saída só é fechada uma vez
+        if (self::$responseFinished) {
+            return;
+        }
+        self::$responseFinished = true;
+
         if (self::$finisher !== null) {
             (self::$finisher)();
             return;
@@ -649,6 +664,143 @@ final class Monitor
             return (int) $value;
         }
         return null;
+    }
+
+    /**
+     * Dispara os notificadores configurados cujas regras casam com o request.
+     * Sem `notifiers` custa uma leitura de config; o trabalho pesado só roda
+     * depois de fechar a resposta. Nunca lança.
+     */
+    private static function notify(int $status, float $durationMs, ?Buffer $buffer, float $start): void
+    {
+        try {
+            $entries = Dispatcher::entries();
+            if ($entries === []) {
+                return;
+            }
+
+            $facts   = self::notificationFacts($status, $durationMs, $buffer);
+            $matched = Dispatcher::matching($entries, $facts);
+            if ($matched === []) {
+                return;
+            }
+
+            self::finishResponse();
+            Dispatcher::send($matched, self::buildNotification($facts, $buffer, $start));
+        } catch (\Throwable) {
+            // O monitor nunca derruba a aplicação.
+        }
+    }
+
+    /**
+     * Fatos baratos do request usados por `Rules` (sem descrever exceções).
+     *
+     * @return array<string, mixed>
+     */
+    private static function notificationFacts(int $status, float $durationMs, ?Buffer $buffer): array
+    {
+        $env = \PSF::config('environment');
+
+        $hasFatal = false;
+        foreach ($buffer?->exceptions() ?? [] as $event) {
+            if (is_array($event['fatal'] ?? null)) {
+                $hasFatal = true;
+                break;
+            }
+        }
+
+        $hasExternalError = false;
+        foreach ($buffer?->externals() ?? [] as $call) {
+            if ($call['status'] === null || $call['status'] >= 500) {
+                $hasExternalError = true;
+                break;
+            }
+        }
+
+        return [
+            'status'           => $status,
+            'route'            => self::$context['route'] ?? self::UNMATCHED,
+            'method'           => self::cleanMethod(self::$context['method'] ?? self::$bootMethod),
+            'env'              => is_string($env) && $env !== '' ? self::cut($env, self::ENV_MAX) : 'dev',
+            'hasException'     => $buffer?->hasExceptions() ?? false,
+            'hasFatal'         => $hasFatal,
+            'hasExternalError' => $hasExternalError,
+            'slowRequest'      => $durationMs >= (float) Config::get('slowMs.request'),
+            'slowQuery'        => $buffer !== null && $buffer->maxQueryMs() >= (float) Config::get('slowMs.query'),
+            'slowExternal'     => $buffer !== null && $buffer->maxExternalMs() >= (float) Config::get('slowMs.external'),
+            'durationMs'       => $durationMs,
+        ];
+    }
+
+    /** @param array<string, mixed> $facts */
+    private static function buildNotification(array $facts, ?Buffer $buffer, float $start): Notification
+    {
+        $storeMessage = (bool) Config::get('storeExceptionMessage', true);
+        $exceptions   = [];
+        foreach (array_slice($buffer?->exceptions() ?? [], 0, 5) as $event) {
+            if (($event['throwable'] ?? null) instanceof \Throwable) {
+                $described = ExceptionDescriber::describe($event['throwable'], $storeMessage);
+                $isFatal   = false;
+            } elseif (is_array($event['fatal'] ?? null)) {
+                $described = ExceptionDescriber::fatal($event['fatal'], $storeMessage);
+                $isFatal   = true;
+            } else {
+                continue;
+            }
+            $exceptions[] = [
+                'class'     => $described['exception_class'],
+                'message'   => $described['message'],
+                'file'      => $described['file'],
+                'line'      => $described['line_no'],
+                'traceHash' => $described['trace_hash'],
+                'fatal'     => $isFatal,
+            ];
+        }
+
+        $externalErrors = [];
+        foreach ($buffer?->externals() ?? [] as $call) {
+            if ($call['status'] === null || $call['status'] >= 500) {
+                $externalErrors[] = [
+                    'kind'       => $call['kind'],
+                    'target'     => $call['target'],
+                    'status'     => $call['status'],
+                    'durationMs' => round($call['duration_ms'], 2),
+                ];
+            }
+        }
+
+        $reasons = [];
+        foreach ([
+            'status'        => $facts['status'] >= 500,
+            'exception'     => $facts['hasException'],
+            'fatal'         => $facts['hasFatal'],
+            'slowRequest'   => $facts['slowRequest'],
+            'slowQuery'     => $facts['slowQuery'],
+            'externalError' => $facts['hasExternalError'],
+            'slowExternal'  => $facts['slowExternal'],
+        ] as $reason => $on) {
+            if ($on) {
+                $reasons[] = $reason;
+            }
+        }
+
+        $release = Config::get('release');
+
+        return new Notification(
+            reasons: $reasons,
+            requestId: (string) self::$requestId,
+            route: $facts['route'],
+            method: $facts['method'],
+            status: $facts['status'],
+            durationMs: $facts['durationMs'],
+            env: $facts['env'],
+            release: is_scalar($release) && !is_bool($release) ? self::cut((string) $release, self::RELEASE_MAX) : null,
+            userId: self::$context['user_id'] ?? null,
+            exceptions: $exceptions,
+            externalErrors: $externalErrors,
+            fingerprint: $exceptions !== [] ? $exceptions[0]['traceHash'] : sha1($facts['route'] . '|' . $facts['status']),
+            occurredAt: new \DateTimeImmutable('@' . (int) $start),
+        );
     }
 
     /** Linhas de `exceptions`, descritas só agora (após liberar a resposta). */

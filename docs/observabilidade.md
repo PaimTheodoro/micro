@@ -19,7 +19,8 @@ São gravados **requests, queries SQL, exceções** (inclusive erros fatais do P
    - [Amostragem por peso](#amostragem-por-peso)
    - [Flush depois da resposta](#flush-depois-da-resposta)
    - [Circuit breaker](#circuit-breaker)
-   - [`auto_migrate` (opt-in)](#auto_migrate-opt-in)
+   - [Notificações](#notificações)
+   - [`autoMigrate` (opt-in)](#automigrate-opt-in)
 5. [Esquema das tabelas (contrato)](#esquema-das-tabelas-contrato)
 6. [Privacidade](#privacidade)
 7. [Agregados, histograma e percentis](#agregados-histograma-e-percentis)
@@ -105,13 +106,14 @@ Tudo em `config['settings']['monitor']`. Valores omitidos usam o default. Para c
 | `retention.rawDays` | `7` | Dias de dados brutos (requests, queries, exceções e chamadas externas). Inteiro 1..36500. Ver [Retenção e manutenção](#retenção-e-manutenção). |
 | `retention.aggregateDays` | `90` | Dias de agregados por hora (`psf_monitor_rollups`). Inteiro 1..36500. |
 | `breaker.failures` | `3` | Falhas seguidas de gravação até abrir o breaker. |
-| `breaker.cooldown_seconds` | `300` | Tempo com a gravação suspensa depois que o breaker abre. |
-| `connect_timeout` | `1` | Timeout de conexão (s) da conexão dedicada: `PDO::ATTR_TIMEOUT` (no SQL Server, `LoginTimeout` no DSN, pois o pdo_sqlsrv não aceita esse atributo). É só um default: ver [Limites](#limites-e-cuidados-conhecidos). |
-| `expose_request_id` | `true` | Devolve o `X-Request-Id` na resposta e o expõe no CORS. |
-| `store_user` | `true` | Grava `user_id` (de `Router::$auth`). |
-| `user_id_property` | `'id'` | Propriedade (objeto) ou chave (array) de `Router::$auth` usada como `user_id`. |
-| `auto_migrate` | `false` | Opt-in: cria as tabelas sozinho se faltarem (fora de `prd`). Ver [`auto_migrate`](#auto_migrate-opt-in). |
-| `store_exception_message` | `true` | Grava a mensagem das exceções (as de `PDOException` e de erros fatais passam antes pela [limpeza de valores](#limpeza-de-mensagens)). Com `false`, a coluna `message` fica vazia para **todas** as exceções e as linhas `Caused by:` do trace saem sem mensagem. |
+| `breaker.cooldownSeconds` | `300` | Tempo com a gravação suspensa depois que o breaker abre. |
+| `connectTimeout` | `1` | Timeout de conexão (s) da conexão dedicada: `PDO::ATTR_TIMEOUT` (no SQL Server, `LoginTimeout` no DSN, pois o pdo_sqlsrv não aceita esse atributo). É só um default: ver [Limites](#limites-e-cuidados-conhecidos). |
+| `exposeRequestId` | `true` | Devolve o `X-Request-Id` na resposta e o expõe no CORS. |
+| `storeUser` | `true` | Grava `user_id` (de `Router::$auth`). |
+| `userIdProperty` | `'id'` | Propriedade (objeto) ou chave (array) de `Router::$auth` usada como `user_id`. |
+| `autoMigrate` | `false` | Opt-in: cria as tabelas sozinho se faltarem (fora de `prd`). Ver [`autoMigrate`](#automigrate-opt-in). |
+| `storeExceptionMessage` | `true` | Grava a mensagem das exceções (as de `PDOException` e de erros fatais passam antes pela [limpeza de valores](#limpeza-de-mensagens)). Com `false`, a coluna `message` fica vazia para **todas** as exceções e as linhas `Caused by:` do trace saem sem mensagem. |
+| `notifiers` | _(ausente)_ | Avisos de erro/lentidão enviados a Slack, e-mail, webhook etc. Ver [Notificações](#notificações). |
 | `api.enabled` | `false` | Liga o serviço JSON opcional [`MonitorApi`](#monitorapi-serviço-json-opcional). Só `true` (booleano) liga; desligado, ele responde 404 sem consultar o banco. Não afeta a coleta nem o `Reader`. |
 | `release` | _(ausente)_ | Valor livre (string ou número) gravado em `app_release`, cortado em 64 caracteres. |
 
@@ -260,7 +262,7 @@ Protege a aplicação de um banco de monitoramento lento ou fora do ar:
 - Um flush bem-sucedido zera o contador de falhas.
 - Falhas do monitor nunca chegam à aplicação: todo o flush roda em `try/catch (\Throwable)`.
 
-### `auto_migrate` (opt-in)
+### Notificações
 
 Com `'auto_migrate' => true`, o monitor instala as tabelas sozinho quando elas não existem. Regras:
 
