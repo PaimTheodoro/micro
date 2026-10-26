@@ -37,7 +37,7 @@ beforeEach(function () {
     $this->pdo = Connection::open('default');
 });
 
-it('deletes only rows older than raw_days', function () {
+it('deletes only rows older than rawDays', function () {
     $now = prunerNow();
     prunerInsert($this->pdo, $now->modify('-10 days'), 'a');
     prunerInsert($this->pdo, $now->modify('-8 days'), 'b');
@@ -89,7 +89,7 @@ it('ignores an invalid watermark and a missing state table', function () {
     expect(prunerMake()->pruneRaw($now, 7))->toBe(1);
 });
 
-it('rejects raw_days below 1 without deleting anything', function (int $days) {
+it('rejects rawDays below 1 without deleting anything', function (int $days) {
     $now = prunerNow();
     prunerInsert($this->pdo, $now->modify('-10 days'), 'a');
 
@@ -123,7 +123,7 @@ function prunerInsertRollup(PDO $pdo, DateTimeImmutable $hour, string $key): voi
     )->execute([':h' => $hour->format('Y-m-d H:i:s'), ':k' => $key]);
 }
 
-it('prunes aggregates older than aggregate_days', function () {
+it('prunes aggregates older than aggregateDays', function () {
     $now = prunerNow();
     prunerInsertRollup($this->pdo, $now->modify('-100 days'), 'a');
     prunerInsertRollup($this->pdo, $now->modify('-91 days'), 'b');
@@ -133,7 +133,7 @@ it('prunes aggregates older than aggregate_days', function () {
     expect($this->pdo->query('SELECT metric_key FROM psf_monitor_rollups')->fetchAll(PDO::FETCH_COLUMN))->toBe(['c']);
 });
 
-it('rejects aggregate_days below 1', function (int $days) {
+it('rejects aggregateDays below 1', function (int $days) {
     $now = prunerNow();
     prunerInsertRollup($this->pdo, $now->modify('-100 days'), 'a');
 
@@ -159,10 +159,10 @@ it('does not let a stuck rollup grow the raw tables without bound', function (?s
     'no watermark'                 => [null, ['d1']],
 ]);
 
-it('rejects a raw_days above the ceiling before any query', function () {
+it('rejects a rawDays above the ceiling before any query', function () {
     monitorUseConfig(['enabled' => true]);
 
-    expect(fn () => prunerMake()->pruneRaw(prunerNow(), 36501))->toThrow(InvalidArgumentException::class, 'raw_days inválido');
+    expect(fn () => prunerMake()->pruneRaw(prunerNow(), 36501))->toThrow(InvalidArgumentException::class, 'rawDays inválido');
     expect(fn () => prunerMake()->pruneRaw(prunerNow(), PHP_INT_MAX))->toThrow(InvalidArgumentException::class);
 });
 

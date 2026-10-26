@@ -35,7 +35,7 @@ it('never combines * with credentials', function () {
 });
 
 it('treats OPTIONS with Access-Control-Request-Method as a preflight', function () {
-    $result = Cors::resolve(['origins' => '*', 'max_age' => 60], 'https://a.com', 'OPTIONS', 'POST');
+    $result = Cors::resolve(['origins' => '*', 'maxAge' => 60], 'https://a.com', 'OPTIONS', 'POST');
 
     expect($result['preflight'])->toBeTrue();
     expect($result['headers']['Access-Control-Allow-Methods'])->toContain('DELETE');
@@ -48,7 +48,7 @@ it('does not treat a plain OPTIONS as a preflight', function () {
 });
 
 it('emits expose headers when configured', function () {
-    $headers = Cors::resolve(['origins' => '*', 'expose_headers' => ['X-Request-Id', 'X-Total']], 'https://a.com', 'GET')['headers'];
+    $headers = Cors::resolve(['origins' => '*', 'exposeHeaders' => ['X-Request-Id', 'X-Total']], 'https://a.com', 'GET')['headers'];
 
     expect($headers['Access-Control-Expose-Headers'])->toBe('X-Request-Id, X-Total');
 });
@@ -62,22 +62,22 @@ it('omits expose headers by default', function () {
 it('ignores misconfigured expose headers instead of failing', function () {
     $headers = Cors::resolve([
         'origins'        => '*',
-        'expose_headers' => [['X-Nested'], ' X-Total ', '', '   ', 42, null, true, 'X-Total', 'x-total', new stdClass(), 'X-Request-Id'],
+        'exposeHeaders' => [['X-Nested'], ' X-Total ', '', '   ', 42, null, true, 'X-Total', 'x-total', new stdClass(), 'X-Request-Id'],
     ], 'https://a.com', 'GET')['headers'];
 
     expect($headers['Access-Control-Expose-Headers'])->toBe('X-Total, X-Request-Id');
 });
 
 it('omits expose headers when no valid name remains', function () {
-    $headers = Cors::resolve(['origins' => '*', 'expose_headers' => [[], '', ' ', 1]], 'https://a.com', 'GET')['headers'];
+    $headers = Cors::resolve(['origins' => '*', 'exposeHeaders' => [[], '', ' ', 1]], 'https://a.com', 'GET')['headers'];
 
     expect($headers)->not->toHaveKey('Access-Control-Expose-Headers');
 });
 
-it('adds an exposed header tolerating a non-array expose_headers', function (mixed $expose, array $expected) {
-    $config = Cors::withExposedHeader(['origins' => '*', 'expose_headers' => $expose], 'X-Request-Id');
+it('adds an exposed header tolerating a non-array exposeHeaders', function (mixed $expose, array $expected) {
+    $config = Cors::withExposedHeader(['origins' => '*', 'exposeHeaders' => $expose], 'X-Request-Id');
 
-    expect($config['expose_headers'])->toBe($expected)
+    expect($config['exposeHeaders'])->toBe($expected)
         ->and($config['origins'])->toBe('*');
 })->with([
     'string'        => ['X-Total', ['X-Request-Id']],
@@ -87,6 +87,6 @@ it('adds an exposed header tolerating a non-array expose_headers', function (mix
     'já presente'   => [['x-request-id'], ['x-request-id']],
 ]);
 
-it('adds an exposed header when expose_headers is missing', function () {
-    expect(Cors::withExposedHeader(['origins' => '*'], 'X-Request-Id')['expose_headers'])->toBe(['X-Request-Id']);
+it('adds an exposed header when exposeHeaders is missing', function () {
+    expect(Cors::withExposedHeader(['origins' => '*'], 'X-Request-Id')['exposeHeaders'])->toBe(['X-Request-Id']);
 });

@@ -11,27 +11,27 @@ it('applies defaults', function () {
     Config::fake(['enabled' => true]);
 
     expect(Config::get('sample.normal'))->toBe(0.1)
-        ->and(Config::get('slow_ms.request'))->toBe(1000)
-        ->and(Config::get('slow_ms.query'))->toBe(200)
-        ->and(Config::get('max_events_per_request'))->toBe(200)
-        ->and(Config::get('retention.raw_days'))->toBe(7)
-        ->and(Config::get('retention.aggregate_days'))->toBe(90)
+        ->and(Config::get('slowMs.request'))->toBe(1000)
+        ->and(Config::get('slowMs.query'))->toBe(200)
+        ->and(Config::get('maxEventsPerRequest'))->toBe(200)
+        ->and(Config::get('retention.rawDays'))->toBe(7)
+        ->and(Config::get('retention.aggregateDays'))->toBe(90)
         ->and(Config::get('breaker.failures'))->toBe(3)
-        ->and(Config::get('breaker.cooldown_seconds'))->toBe(300)
-        ->and(Config::get('connect_timeout'))->toBe(1)
-        ->and(Config::get('expose_request_id'))->toBeTrue()
-        ->and(Config::get('store_user'))->toBeTrue()
-        ->and(Config::get('user_id_property'))->toBe('id')
-        ->and(Config::get('auto_migrate'))->toBeFalse()
-        ->and(Config::get('store_exception_message'))->toBeTrue()
+        ->and(Config::get('breaker.cooldownSeconds'))->toBe(300)
+        ->and(Config::get('connectTimeout'))->toBe(1)
+        ->and(Config::get('exposeRequestId'))->toBeTrue()
+        ->and(Config::get('storeUser'))->toBeTrue()
+        ->and(Config::get('userIdProperty'))->toBe('id')
+        ->and(Config::get('autoMigrate'))->toBeFalse()
+        ->and(Config::get('storeExceptionMessage'))->toBeTrue()
         ->and(Config::database())->toBe('default');
 });
 
 it('merges nested overrides', function () {
-    Config::fake(['enabled' => true, 'slow_ms' => ['query' => 50]]);
+    Config::fake(['enabled' => true, 'slowMs' => ['query' => 50]]);
 
-    expect(Config::get('slow_ms.query'))->toBe(50)
-        ->and(Config::get('slow_ms.request'))->toBe(1000);
+    expect(Config::get('slowMs.query'))->toBe(50)
+        ->and(Config::get('slowMs.request'))->toBe(1000);
 });
 
 it('clamps sample.normal', function ($input, $expected) {
@@ -55,11 +55,11 @@ it('reads settings.monitor from PSF config', function () {
 it('keeps nested defaults when a section is overridden by a scalar', function ($key, $value) {
     Config::fake(['enabled' => true, $key => $value]);
 
-    expect(Config::get('slow_ms.query'))->toBe(200)
+    expect(Config::get('slowMs.query'))->toBe(200)
         ->and(Config::get('breaker.failures'))->toBe(3)
-        ->and(Config::get('retention.raw_days'))->toBe(7);
+        ->and(Config::get('retention.rawDays'))->toBe(7);
 })->with([
-    ['slow_ms', 5],
+    ['slowMs', 5],
     ['breaker', true],
     ['retention', null],
 ]);
@@ -68,10 +68,10 @@ it('yields defaults when settings.monitor is not an array', function ($value) {
     monitorUseConfig([], ['settings' => ['monitor' => $value]]);
 
     expect(Config::enabled())->toBeFalse()
-        ->and(Config::get('slow_ms.query'))->toBe(200);
+        ->and(Config::get('slowMs.query'))->toBe(200);
 })->with(['texto', true]);
 
 it('allows turning off the exception message storage', function () {
-    Config::fake(['enabled' => true, 'store_exception_message' => false]);
-    expect(Config::get('store_exception_message'))->toBeFalse();
+    Config::fake(['enabled' => true, 'storeExceptionMessage' => false]);
+    expect(Config::get('storeExceptionMessage'))->toBeFalse();
 });

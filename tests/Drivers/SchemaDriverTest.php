@@ -121,7 +121,7 @@ it('is idempotent and upgrades a partial (phase-1 and phase-3) install keeping t
 })->with('drivers');
 
 it('opens a dedicated connection with the timeout option accepted by the driver', function (string $driver) {
-    driverUse($driver, ['enabled' => true, 'connect_timeout' => 2]);
+    driverUse($driver, ['enabled' => true, 'connectTimeout' => 2]);
 
     $pdo = Connection::open('default');
 

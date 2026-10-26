@@ -288,7 +288,7 @@ Configs antigas podem passar o valor inteiro do enum (`'driver' => 1`). Ver [doc
 ### Autenticação, JWT e CORS
 
 - `JWT::encode($payload)`, `JWT::verify($token)` (assinatura, `exp` e `nbf`) e `JWT::decode()`. `jwt.secret` ausente ou com menos de 16 caracteres lança `RuntimeException`.
-- `settings.cors` aceita `origins` (lista ou `'*'`), `methods`, `headers`, `credentials`, `max_age` e `expose_headers`; o preflight `OPTIONS` é respondido com 204 sem chegar às rotas.
+- `settings.cors` aceita `origins` (lista ou `'*'`), `methods`, `headers`, `credentials`, `maxAge` e `exposeHeaders`; o preflight `OPTIONS` é respondido com 204 sem chegar às rotas.
 
 ### Documentação da API
 
@@ -318,8 +318,8 @@ O monitor grava métricas de cada request da API no **banco do próprio projeto*
 - **Baixo custo**: durante o request só se guarda o SQL cru, a duração e a conexão. Normalização, hash e gravação acontecem no shutdown, depois de `fastcgi_finish_request()` (com PHP-FPM o cliente já recebeu a resposta), num único lote transacional por uma conexão própria.
 - **Circuit breaker**: após falhas seguidas de gravação, o monitor para de gravar por um tempo. Falhas do monitor nunca chegam à aplicação.
 - **Agregados por hora** em `psf_monitor_rollups` (hits, erros, tempo total e máximo, histograma para p50/p95/p99), gerados pelo `monitor:rollup`/`monitor:maintain`. O dado agregado atrasa até cerca de 1 h 5 min.
-- **Retenção**: brutos por `retention.raw_days`, agregados por `retention.aggregate_days`, limpos pelo `monitor:prune`/`monitor:maintain` (não há limpeza durante requests).
-- **Privacidade**: body, headers, cookies, token, query string e valores dos bindings nunca são gravados. O SQL é guardado só normalizado, e as mensagens de `PDOException` e de erros fatais passam por uma limpeza que troca os valores das linhas por `?`. Mensagens das exceções da aplicação são gravadas como vieram (`store_exception_message => false` desliga).
+- **Retenção**: brutos por `retention.rawDays`, agregados por `retention.aggregateDays`, limpos pelo `monitor:prune`/`monitor:maintain` (não há limpeza durante requests).
+- **Privacidade**: body, headers, cookies, token, query string e valores dos bindings nunca são gravados. O SQL é guardado só normalizado, e as mensagens de `PDOException` e de erros fatais passam por uma limpeza que troca os valores das linhas por `?`. Mensagens das exceções da aplicação são gravadas como vieram (`storeExceptionMessage => false` desliga).
 
 **Ativação**
 
@@ -329,14 +329,14 @@ O monitor grava métricas de cada request da API no **banco do próprio projeto*
         'enabled'   => true,               // padrão: false (monitor totalmente desligado)
         'database'  => 'default',          // chave de config['db'] onde ficam as tabelas
         'sample'    => ['normal' => 0.1],  // fração dos requests "normais" gravados
-        'slow_ms'   => ['request' => 1000, 'query' => 200, 'external' => 1000],
-        'retention' => ['raw_days' => 7, 'aggregate_days' => 90],
+        'slowMs'   => ['request' => 1000, 'query' => 200, 'external' => 1000],
+        'retention' => ['rawDays' => 7, 'aggregateDays' => 90],
         'release'   => '1.4.2',            // opcional, texto livre
     ],
 ],
 ```
 
-Os valores acima são os padrões (exceto `enabled` e `release`). Também existem `max_events_per_request` (200), `breaker` (`failures` 3, `cooldown_seconds` 300), `connect_timeout` (1 s), `expose_request_id` (`true`), `store_user` (`true`), `user_id_property` (`'id'`), `store_exception_message` (`true`) e `auto_migrate` (`false`; cria as tabelas sozinho fora de `prd`) e `api` (`['enabled' => false]`; liga o serviço `MonitorApi`).
+Os valores acima são os padrões (exceto `enabled` e `release`). Também existem `maxEventsPerRequest` (200), `breaker` (`failures` 3, `cooldownSeconds` 300), `connectTimeout` (1 s), `exposeRequestId` (`true`), `storeUser` (`true`), `userIdProperty` (`'id'`), `storeExceptionMessage` (`true`) e `autoMigrate` (`false`; cria as tabelas sozinho fora de `prd`) e `api` (`['enabled' => false]`; liga o serviço `MonitorApi`).
 
 ```bash
 vendor/bin/psf monitor:install    # cria as tabelas psf_monitor_* (idempotente)

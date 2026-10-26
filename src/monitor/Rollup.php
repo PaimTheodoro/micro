@@ -113,7 +113,7 @@ final class Rollup
     /**
      * Recalcula as horas `[watermark − REAGGREGATE_HOURS, watermark)`, nunca antes
      * da hora bruta mais antiga nem antes de `now − 1 dia` (linhas mais novas que
-     * 1 dia nunca são apagadas, pois `raw_days >= 1`). Hora sem nenhuma linha
+     * 1 dia nunca são apagadas, pois `rawDays >= 1`). Hora sem nenhuma linha
      * bruta é pulada, para não apagar um agregado cujos brutos já foram limpos.
      * Não grava o watermark. Hora que falha por violação de integridade é desfeita
      * e mantém o agregado anterior (não conta como recalculada).

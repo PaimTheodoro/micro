@@ -11,7 +11,7 @@ use Psf\Monitor\Pruner;
  */
 final class CommandOptions
 {
-    /** Teto de dias de retenção (garante que `raw_days * 4` nunca estoure); o mesmo do Pruner */
+    /** Teto de dias de retenção (garante que `rawDays * 4` nunca estoure); o mesmo do Pruner */
     public const MAX_RETENTION_DAYS = Pruner::MAX_RAW_DAYS;
 
     /** Teto de `--max-hours` por execução */

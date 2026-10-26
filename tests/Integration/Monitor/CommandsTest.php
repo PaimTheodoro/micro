@@ -59,14 +59,14 @@ function commandsInsertOld(): void
     )->execute([':ts' => $ts]);
 }
 
-it('refuses an invalid retention.raw_days and deletes nothing', function ($value) {
-    monitorUseConfig(['enabled' => true, 'retention' => ['raw_days' => $value]]);
+it('refuses an invalid retention.rawDays and deletes nothing', function ($value) {
+    monitorUseConfig(['enabled' => true, 'retention' => ['rawDays' => $value]]);
     commandsInsertOld();
 
     $tester = new CommandTester(new MonitorPrune());
 
     expect($tester->execute([]))->toBe(1);
-    expect($tester->getDisplay())->toContain('retention.raw_days inválido');
+    expect($tester->getDisplay())->toContain('retention.rawDays inválido');
     $count = Connection::open('default')->query('SELECT COUNT(*) FROM psf_monitor_requests')->fetchColumn();
     expect((int) $count)->toBe(1);
 })->with([0, 'abc', -3, null]);

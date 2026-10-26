@@ -76,7 +76,7 @@ it('records queries and normalizes them at flush', function () {
 });
 
 it('keeps a request whose query was slow even if the query was dropped', function () {
-    monitorEventsStart(['sample' => ['normal' => 0.0], 'max_events_per_request' => 1]);
+    monitorEventsStart(['sample' => ['normal' => 0.0], 'maxEventsPerRequest' => 1]);
 
     Monitor::queryEnd(Monitor::queryStart(), 'SELECT 1');
     Monitor::queryEnd(hrtime(true) - 450_000_000, 'SELECT 2');
@@ -289,8 +289,8 @@ it('counts distinct exceptions past the cap as dropped and ignores repeats', fun
         ->and(Monitor::events()['dropped'])->toBe(5);
 });
 
-it('honours store_exception_message when writing exceptions and fatals', function () {
-    monitorEventsStart(['sample' => ['normal' => 0.0], 'store_exception_message' => false]);
+it('honours storeExceptionMessage when writing exceptions and fatals', function () {
+    monitorEventsStart(['sample' => ['normal' => 0.0], 'storeExceptionMessage' => false]);
     Monitor::useFatalProvider(fn () => ['type' => E_ERROR, 'message' => 'fatal secreto', 'file' => '/f.php', 'line' => 1]);
 
     Monitor::exception(new RuntimeException('segredo', 0, new LogicException('segredo interno')));

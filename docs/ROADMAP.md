@@ -52,7 +52,7 @@ Guia em [observabilidade.md](observabilidade.md); histórico em [melhorias.md](m
 
 | Fase do monitor | Descrição | Status | Branch |
 |-----------------|-----------|--------|--------|
-| 1 | Requests, `X-Request-Id`, amostragem por peso, circuit breaker, `monitor:install`/`status`/`prune`, `auto_migrate` | ✅ Concluído | `feat/monitor-observabilidade` |
+| 1 | Requests, `X-Request-Id`, amostragem por peso, circuit breaker, `monitor:install`/`status`/`prune`, `autoMigrate` | ✅ Concluído | `feat/monitor-observabilidade` |
 | 2 | Queries SQL normalizadas, exceções e erros fatais, limpeza de mensagens | ✅ Concluído | `feat/monitor-observabilidade` |
 | 3 | Rollups por hora, histograma/percentis, `Reader`, `monitor:rollup`/`maintain` | ✅ Concluído | `feat/monitor-fase3` |
 | 4 | Chamadas externas via `Monitor::external` (`Email`, `CloudStorage`, `Request`/`Http`), controller JSON opcional sobre o `Reader`, testes de fumaça em MySQL/PostgreSQL/SQL Server | ⬜ Planejado | — |

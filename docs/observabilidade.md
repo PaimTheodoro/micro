@@ -98,12 +98,12 @@ Tudo em `config['settings']['monitor']`. Valores omitidos usam o default. Para c
 | `enabled` | `false` | Liga o monitor (lido por truthiness). |
 | `database` | `'default'` | Chave de `config['db']` onde as tabelas vivem. Vazia ou não-string vira `'default'`. |
 | `sample.normal` | `0.1` | Probabilidade de gravar um request "normal" (sem erro, exceção ou lentidão). Limitada a `[0, 1]`; valor não numérico ou negativo vira `0.1`; `0` grava só erros, exceções e lentos. |
-| `slow_ms.request` | `1000` | Request com duração >= este valor é sempre gravado. |
-| `slow_ms.query` | `200` | Request com ao menos uma query de duração >= este valor é sempre gravado, mesmo que essa query tenha ficado acima do teto de eventos. |
-| `slow_ms.external` | `1000` | Request com ao menos uma chamada externa de duração >= este valor é sempre gravado (peso 1), mesmo que essa chamada tenha ficado acima do teto de eventos. Ver [Chamadas externas](#chamadas-externas). |
-| `max_events_per_request` | `200` | Teto de **queries** e, separadamente, de **chamadas externas** guardadas por request (mínimo 1 em cada tipo); o excedente é contado em `dropped_events`. Exceções têm teto fixo de 20. |
-| `retention.raw_days` | `7` | Dias de dados brutos (requests, queries, exceções e chamadas externas). Inteiro 1..36500. Ver [Retenção e manutenção](#retenção-e-manutenção). |
-| `retention.aggregate_days` | `90` | Dias de agregados por hora (`psf_monitor_rollups`). Inteiro 1..36500. |
+| `slowMs.request` | `1000` | Request com duração >= este valor é sempre gravado. |
+| `slowMs.query` | `200` | Request com ao menos uma query de duração >= este valor é sempre gravado, mesmo que essa query tenha ficado acima do teto de eventos. |
+| `slowMs.external` | `1000` | Request com ao menos uma chamada externa de duração >= este valor é sempre gravado (peso 1), mesmo que essa chamada tenha ficado acima do teto de eventos. Ver [Chamadas externas](#chamadas-externas). |
+| `maxEventsPerRequest` | `200` | Teto de **queries** e, separadamente, de **chamadas externas** guardadas por request (mínimo 1 em cada tipo); o excedente é contado em `dropped_events`. Exceções têm teto fixo de 20. |
+| `retention.rawDays` | `7` | Dias de dados brutos (requests, queries, exceções e chamadas externas). Inteiro 1..36500. Ver [Retenção e manutenção](#retenção-e-manutenção). |
+| `retention.aggregateDays` | `90` | Dias de agregados por hora (`psf_monitor_rollups`). Inteiro 1..36500. |
 | `breaker.failures` | `3` | Falhas seguidas de gravação até abrir o breaker. |
 | `breaker.cooldown_seconds` | `300` | Tempo com a gravação suspensa depois que o breaker abre. |
 | `connect_timeout` | `1` | Timeout de conexão (s) da conexão dedicada: `PDO::ATTR_TIMEOUT` (no SQL Server, `LoginTimeout` no DSN, pois o pdo_sqlsrv não aceita esse atributo). É só um default: ver [Limites](#limites-e-cuidados-conhecidos). |
@@ -126,7 +126,7 @@ O ambiente gravado em `env` vem de `config['environment']` (ausente ou vazio = `
 1. **Boot.** O construtor do `Router` chama `Monitor::boot()`. É idempotente e nunca lança (em caso de erro o monitor fica "sem boot" e todos os ganchos viram no-op). O boot guarda o início do request (`$_SERVER['REQUEST_TIME_FLOAT']`, ou `microtime(true)`), resolve o [`X-Request-Id`](#x-request-id), marca preflights CORS (`OPTIONS` com `Access-Control-Request-Method`) como ignorados, registra `Monitor::flush()` como função de shutdown (uma vez por processo) e emite o header `X-Request-Id` se os headers ainda não foram enviados.
 2. **CORS.** Com `settings.cors` configurado, o `Router` acrescenta `X-Request-Id` a `Access-Control-Expose-Headers` (ver [X-Request-Id](#x-request-id)).
 3. **Rota.** Ao casar a rota, o `Router` registra o **padrão** dela (`Monitor::route()`), nunca a URL real, junto com o método e a versão. Sem rota casada, registra `(unmatched)` antes de lançar o 404.
-4. **Usuário.** Depois de uma autenticação bem-sucedida (middleware `authentication`), o `Router` passa `Router::$auth` para `Monitor::user()`, que extrai o `user_id` (se `store_user`).
+4. **Usuário.** Depois de uma autenticação bem-sucedida (middleware `authentication`), o `Router` passa `Router::$auth` para `Monitor::user()`, que extrai o `user_id` (se `storeUser`).
 5. **Queries, exceções e chamadas externas.** Os [ganchos dos shims de banco](#queries), do `Router` e dos [clientes externos](#chamadas-externas) guardam eventos crus no [buffer](#buffer-tetos-e-custo).
 6. **Shutdown.** `Monitor::flush()` lê o status (`http_response_code()`, padrão 200) e a duração, detecta erro fatal, aplica a [amostragem](#amostragem-por-peso) e consulta o [breaker](#circuit-breaker). Só se o request for gravado: [libera a resposta](#flush-depois-da-resposta), normaliza o SQL, descreve as exceções e grava tudo **num único lote transacional** (request + queries + exceções + chamadas externas) pela conexão dedicada.
 
@@ -135,15 +135,15 @@ O ambiente gravado em `env` vem de `config['environment']` (ausente ou vazio = `
 ### X-Request-Id
 
 - O `request_id` é o `X-Request-Id` de entrada **se** casar com `/^[A-Za-z0-9-]{8,64}$/` (para correlacionar com proxy/gateway); caso contrário o monitor gera 16 bytes aleatórios em hexadecimal (32 caracteres). O formato restrito evita injeção em logs.
-- Com `expose_request_id = true`, o header `X-Request-Id: <request_id>` é emitido já no construtor do `Router`, portanto sai em **qualquer** resposta, inclusive erros e as que terminam em `exit` via `Http::response()` (desde que os headers ainda não tenham sido enviados).
-- Para o header ser legível por JavaScript no navegador, quando o monitor está ligado, `expose_request_id` é verdadeiro **e** o CORS está configurado (`settings.cors`), o `Router` acrescenta `X-Request-Id` a `Access-Control-Expose-Headers` (sem duplicar, sem diferenciar maiúsculas). A classe `Cors` aceita a chave `expose_headers` no config também sem o monitor (ver [rotas.md](rotas.md#cors)).
+- Com `exposeRequestId = true`, o header `X-Request-Id: <request_id>` é emitido já no construtor do `Router`, portanto sai em **qualquer** resposta, inclusive erros e as que terminam em `exit` via `Http::response()` (desde que os headers ainda não tenham sido enviados).
+- Para o header ser legível por JavaScript no navegador, quando o monitor está ligado, `exposeRequestId` é verdadeiro **e** o CORS está configurado (`settings.cors`), o `Router` acrescenta `X-Request-Id` a `Access-Control-Expose-Headers` (sem duplicar, sem diferenciar maiúsculas). A classe `Cors` aceita a chave `exposeHeaders` no config também sem o monitor (ver [rotas.md](rotas.md#cors)).
 
 ### Queries
 
 - **Onde são coletadas.** Em ganchos nos shims de banco: `Read`, `Create::exe`, `Create::batch`, `Update` e `Delete`. É gravado **um evento por statement executado**: cada chunk de `Create::batch` é um statement (um lote grande vira vários eventos). A duração é medida em volta do `execute()` (em `Read`, junto com o `fetchAll()`). Uma query que falha também é registrada (com a duração até a falha).
 - **Não são instrumentados:** introspecção de esquema, metadata de `Model` e qualquer acesso que não passe por esses shims (por exemplo PDO usado diretamente pela aplicação). A conexão do próprio monitor também não é instrumentada.
 - **Durante o request só o SQL cru é guardado** (até 8000 caracteres), com a duração, a chave de `config['db']` e o instante. A [normalização](#sql-normalizado) e o hash acontecem no flush, depois de a resposta ser liberada.
-- **Limite de eventos.** Acima de `max_events_per_request` as queries seguintes são descartadas e somadas em `dropped_events`; o **maior tempo** de query do request continua sendo considerado pela amostragem (uma query lenta além do teto ainda faz o request ser gravado).
+- **Limite de eventos.** Acima de `maxEventsPerRequest` as queries seguintes são descartadas e somadas em `dropped_events`; o **maior tempo** de query do request continua sendo considerado pela amostragem (uma query lenta além do teto ainda faz o request ser gravado).
 
 ### Exceções
 
@@ -197,8 +197,8 @@ O `kind` do evento é um de `http`, `mail` ou `storage`; qualquer outro valor é
 
 **Teto e lentidão.**
 
-- `max_events_per_request` vale **por tipo de evento**: queries e chamadas externas têm baterias separadas, cada uma com o seu teto (200 por padrão). O excedente de chamadas externas é descartado e somado em `dropped_events`.
-- O **maior tempo** de chamada externa é acompanhado mesmo das descartadas: se ele for >= `slow_ms.external` (padrão `1000` ms), o request é sempre gravado, com peso 1 (ver [Amostragem](#amostragem-por-peso)).
+- `maxEventsPerRequest` vale **por tipo de evento**: queries e chamadas externas têm baterias separadas, cada uma com o seu teto (200 por padrão). O excedente de chamadas externas é descartado e somado em `dropped_events`.
+- O **maior tempo** de chamada externa é acompanhado mesmo das descartadas: se ele for >= `slowMs.external` (padrão `1000` ms), o request é sempre gravado, com peso 1 (ver [Amostragem](#amostragem-por-peso)).
 - A duração gravada é limitada ao intervalo da coluna (`decimal(10,2)`, até 99999999.99 ms); duração negativa, `NaN` ou infinita é ignorada.
 
 **Chamadas customizadas.** Para medir outro serviço (um gateway de pagamento, uma fila, um cliente HTTP de terceiros), use a API estática do `Monitor`. Use sempre um `target` seguro (por exemplo `ExternalTarget::fromUrl($url)` ou um nome fixo); o `Monitor` grava o `target` **como veio** (cortado em 191 caracteres), sem sanear; só um `target` vazio ou com UTF-8 inválido é trocado por `(invalido)`. O `kind` passa por `trim` e minúsculas antes de ser validado (`' HTTP '` vira `http`).
@@ -230,14 +230,14 @@ Monitor::externalEnd($t, 'http', 'fila.exemplo.com', $ok ? 200 : null);
 
 - Durante o request, os ganchos só **guardam o SQL cru** (cortado em 8000 caracteres sem partir UTF-8), a duração, a conexão e o instante; exceções são guardadas como objeto; chamadas externas guardam só `kind`, `target` (já seguro), duração, `status` e instante. Não há normalização nem hash no caminho da resposta.
 - Descrição de exceções, normalização de SQL e hash rodam no **flush**, depois de `fastcgi_finish_request()`, e só se o request for gravado.
-- Memória por request limitada: `max_events_per_request` queries (200 por padrão) × até 8000 caracteres + até `max_events_per_request` chamadas externas (eventos pequenos) + até 21 exceções (20 + o fatal).
+- Memória por request limitada: `maxEventsPerRequest` queries (200 por padrão) × até 8000 caracteres + até `maxEventsPerRequest` chamadas externas (eventos pequenos) + até 21 exceções (20 + o fatal).
 - `dropped_events` (na linha do request) soma as queries e as chamadas externas acima do teto e as exceções acima de 20.
 
 ### Amostragem por peso
 
 A decisão é tomada no shutdown, quando já se sabe status e duração:
 
-- **Sempre gravado** (`sample_weight = 1`): status >= 500 (inclui erro fatal), qualquer exceção registrada, duração >= `slow_ms.request`, alguma query com duração >= `slow_ms.query` ou alguma chamada externa com duração >= `slow_ms.external` (mesmo que essa query ou chamada tenha ficado além do teto `max_events_per_request`).
+- **Sempre gravado** (`sample_weight = 1`): status >= 500 (inclui erro fatal), qualquer exceção registrada, duração >= `slowMs.request`, alguma query com duração >= `slowMs.query` ou alguma chamada externa com duração >= `slowMs.external` (mesmo que essa query ou chamada tenha ficado além do teto `maxEventsPerRequest`).
 - **Demais requests**: gravados com probabilidade `sample.normal`; cada linha gravada leva `sample_weight = 1 / sample.normal`. Com `sample.normal = 0`, nenhum request normal é gravado.
 
 As linhas filhas (`queries`, `exceptions` e `external`) usam o mesmo `sample_weight` do request: ou o request é gravado com todos os seus eventos, ou não é gravado. Como a probabilidade de inclusão depende só da categoria do request, `SUM(sample_weight)` é uma estimativa **não enviesada** do total real.
@@ -254,7 +254,7 @@ A gravação usa uma **conexão PDO dedicada** (sem passar por `Connect`): ela n
 
 Protege a aplicação de um banco de monitoramento lento ou fora do ar:
 
-- Após `breaker.failures` falhas seguidas de gravação, o monitor para de gravar por `breaker.cooldown_seconds`.
+- Após `breaker.failures` falhas seguidas de gravação, o monitor para de gravar por `breaker.cooldownSeconds`.
 - Estado em **APCu** quando disponível e ativo no SAPI (`apc.enabled`, e `apc.enable_cli` na CLI); sem APCu, num arquivo-flag `psf-monitor-<md5>.json` em `sys_get_temp_dir()`. A chave é derivada do banco do monitor (`md5('db:<database>')`).
 - Ao abrir, registra **uma** linha de `error_log` com a causa (ver [Solução de problemas](#solução-de-problemas)).
 - Um flush bem-sucedido zera o contador de falhas.
@@ -301,7 +301,7 @@ Um registro por request gravado (ver [Amostragem](#amostragem-por-peso)). `psf_m
 | `user_id` | varchar(64), null | |
 | `env` | varchar(20) | `config['environment']` (ou `dev`). |
 | `app_release` | varchar(64), null | `settings.monitor.release`. |
-| `dropped_events` | int, default 0 | Eventos descartados: queries e chamadas externas acima de `max_events_per_request` (cada tipo com o seu teto) e exceções acima do teto de 20 por request. |
+| `dropped_events` | int, default 0 | Eventos descartados: queries e chamadas externas acima de `maxEventsPerRequest` (cada tipo com o seu teto) e exceções acima do teto de 20 por request. |
 | `sample_weight` | decimal(12,4) | `1 / sample.normal` para amostrados; `1` para sempre-gravados. |
 
 Índices: `idx_psf_monitor_requests_ts (ts)`, `idx_psf_monitor_requests_route_ts (route, ts)`, `idx_psf_monitor_requests_request_id (request_id)`.
@@ -333,7 +333,7 @@ Uma linha por exceção registrada (ver [Exceções](#exceções)) nos requests 
 | `request_id` | varchar(64) | Liga ao request em `psf_monitor_requests`. |
 | `ts` | datetime | UTC, **início do request** (não o instante da exceção). |
 | `exception_class` | varchar(191) | Classe (`FatalError` para erros fatais do PHP). |
-| `message` | varchar(500) | Cortada em 500 caracteres; vazia com `store_exception_message = false`. |
+| `message` | varchar(500) | Cortada em 500 caracteres; vazia com `storeExceptionMessage = false`. |
 | `file` | varchar(255) | Cortado em 255 caracteres. |
 | `line_no` | int | |
 | `trace_hash` | varchar(40) | `sha1` de agrupamento (ver [Exceções](#exceções)). |
@@ -403,11 +403,11 @@ ORDER BY hits DESC;
 
 ## Privacidade
 
-**Nunca** são gravados: body, headers, cookies, token, query string, URL real (só o padrão da rota; nas chamadas externas, só o host), argumentos de funções do stack trace e literais de SQL. Das chamadas externas só se grava o rótulo seguro (`kind` e `target`: host ou `provedor/operação`), a duração e o status ([regra do `target`](#chamadas-externas)). O que é gravado no request: método, padrão da rota, versão, status, duração, pico de memória, `env`, `release`, `request_id`, contagem de descartes, peso e, se `store_user` estiver ligado, o `user_id`.
+**Nunca** são gravados: body, headers, cookies, token, query string, URL real (só o padrão da rota; nas chamadas externas, só o host), argumentos de funções do stack trace e literais de SQL. Das chamadas externas só se grava o rótulo seguro (`kind` e `target`: host ou `provedor/operação`), a duração e o status ([regra do `target`](#chamadas-externas)). O que é gravado no request: método, padrão da rota, versão, status, duração, pico de memória, `env`, `release`, `request_id`, contagem de descartes, peso e, se `storeUser` estiver ligado, o `user_id`.
 
-- **`user_id`** vem de `Router::$auth` (objeto: propriedade `user_id_property`; array: chave de mesmo nome). Só valores escalares (int, string, float) são aceitos; qualquer outra forma resulta em `null`. Desligue com `'store_user' => false`.
+- **`user_id`** vem de `Router::$auth` (objeto: propriedade `userIdProperty`; array: chave de mesmo nome). Só valores escalares (int, string, float) são aceitos; qualquer outra forma resulta em `null`. Desligue com `'storeUser' => false`.
 - **Trace sem argumentos:** montado de `getTrace()` só com classe, função, arquivo e linha de cada frame.
-- **Mensagens da aplicação** (exceções que não são `PDOException`) são gravadas como vieram (até 500 caracteres): evite colocar dados sensíveis nelas, ou desligue com `'store_exception_message' => false` (nenhuma mensagem é gravada, nem nas linhas `Caused by:`).
+- **Mensagens da aplicação** (exceções que não são `PDOException`) são gravadas como vieram (até 500 caracteres): evite colocar dados sensíveis nelas, ou desligue com `'storeExceptionMessage' => false` (nenhuma mensagem é gravada, nem nas linhas `Caused by:`).
 
 ### SQL normalizado
 
@@ -469,7 +469,7 @@ Como requests normais são gravados por amostragem, os agregados são **ponderad
 - **Início.** Sem watermark, a primeira execução começa na hora da linha bruta mais antiga que ainda exista (nas quatro tabelas brutas). Sem nenhuma linha bruta, nada é feito. Se os brutos já foram limpos no meio daquela hora (prune antes do primeiro rollup), **a primeira hora agregada do backlog pode sair parcial**.
 - **Recálculo idempotente por hora.** Cada hora é recalculada inteira a partir das linhas brutas: `DELETE` dos registros daquela `bucket_hour`, `INSERT` dos novos e avanço do watermark (`psf_monitor_state`) acontecem **na mesma transação**. Uma falha desfaz só aquela hora; as anteriores ficam gravadas e a próxima execução recomeça da hora que falhou. Rodar o comando duas vezes não duplica nada.
 - **No máximo 48 horas novas por execução** (`--max-hours`, inteiro 1..10000; horas puladas também contam); um backlog maior é consumido pelas execuções seguintes.
-- **Reagregação das últimas 2 horas (linhas atrasadas).** Um request que começa às 10:58 e é gravado às 11:06 tem `ts` na hora 10, que já foi agregada às 11:05. Por isso, quando há watermark, cada execução **recalcula antes as 2 horas anteriores ao watermark** (`Rollup::REAGGREGATE_HOURS`), do mesmo jeito idempotente. Linhas atrasadas com `ts` até 2 h antes do watermark convergem na execução seguinte; **mais atrasadas que isso se perdem**. Essas horas não contam em `--max-hours` nem em `Horas agregadas`/`Registros gravados` (o resultado de `Rollup::run()` traz `reaggregated` com quantas foram recalculadas) e o watermark nunca volta. Uma hora da janela sem nenhuma linha bruta é pulada (não apaga o agregado de brutos já limpos), e horas com mais de 1 dia nunca são recalculadas (brutos com menos de 1 dia nunca são apagados, pois `raw_days >= 1`).
+- **Reagregação das últimas 2 horas (linhas atrasadas).** Um request que começa às 10:58 e é gravado às 11:06 tem `ts` na hora 10, que já foi agregada às 11:05. Por isso, quando há watermark, cada execução **recalcula antes as 2 horas anteriores ao watermark** (`Rollup::REAGGREGATE_HOURS`), do mesmo jeito idempotente. Linhas atrasadas com `ts` até 2 h antes do watermark convergem na execução seguinte; **mais atrasadas que isso se perdem**. Essas horas não contam em `--max-hours` nem em `Horas agregadas`/`Registros gravados` (o resultado de `Rollup::run()` traz `reaggregated` com quantas foram recalculadas) e o watermark nunca volta. Uma hora da janela sem nenhuma linha bruta é pulada (não apaga o agregado de brutos já limpos), e horas com mais de 1 dia nunca são recalculadas (brutos com menos de 1 dia nunca são apagados, pois `rawDays >= 1`).
 - **Violação de integridade pula a hora.** Se uma hora nova falha com SQLSTATE de classe `23` (`23000`, `23505`...: por exemplo, chave duplicada que a fusão não previu), ela é desfeita e **pulada** em vez de travar o rollup: o watermark avança numa transação própria, a hora conta em `skipped` (e em `--max-hours`) e as seguintes continuam. Trade-off: **os agregados dessa hora se perdem**; as linhas brutas dela ficam até o prune. Os comandos imprimem `Horas puladas: N` e um aviso (só quando N > 0; exit code 0). Na janela de reagregação, a mesma falha mantém o agregado anterior. Qualquer outra falha (conexão, deadlock, sintaxe, ou falha ao gravar o watermark) desfaz a hora e propaga.
 - **Erro ao ler o watermark** (que não seja a tabela `psf_monitor_state` ausente) **propaga**: o rollup e o prune param em vez de adivinhar o ponto de partida (recomeçar da hora bruta mais antiga substituiria agregados completos por parciais).
 
@@ -681,9 +681,9 @@ Imprime o banco, se as seis tabelas existem (`Instalado`), se o monitor está li
 ### `monitor:rollup`, `monitor:prune` e `monitor:maintain`
 
 - `--max-hours` (default 48) é um inteiro de 1 a 10000 (inteiro ou string só de dígitos).
-- **Validação antes de qualquer escrita:** o `monitor:rollup` valida `--max-hours`; o `monitor:prune` valida `retention.raw_days` e `retention.aggregate_days` (inteiros 1..36500, ou string só de dígitos); o `monitor:maintain` valida os três. Valor inválido encerra com erro (exit code 1) e **nada é agregado nem apagado** (nem o rollup do `monitor:maintain`). Valores como `0`, negativos, `7.5`, `'7.5'`, `'abc'`, `null` e acima de 36500 são rejeitados.
+- **Validação antes de qualquer escrita:** o `monitor:rollup` valida `--max-hours`; o `monitor:prune` valida `retention.rawDays` e `retention.aggregateDays` (inteiros 1..36500, ou string só de dígitos); o `monitor:maintain` valida os três. Valor inválido encerra com erro (exit code 1) e **nada é agregado nem apagado** (nem o rollup do `monitor:maintain`). Valores como `0`, negativos, `7.5`, `'7.5'`, `'abc'`, `null` e acima de 36500 são rejeitados.
 - `Horas agregadas` e `Registros gravados` contam só horas novas (as 2 horas reagregadas ficam de fora). `Horas puladas: N` e o aviso aparecem só quando alguma hora foi pulada por violação de integridade (ver [Agregados](#quando-e-como-cada-hora-é-agregada)).
-- **Falha do rollup no `monitor:maintain` não impede a limpeza:** a falha é impressa (`<error>`), a limpeza de brutos e de agregados roda mesmo assim (o teto de 4 × `raw_days` continua valendo com o rollup quebrado) e o comando termina com **exit code 1**. Se a limpeza também falhar, as duas falhas são impressas.
+- **Falha do rollup no `monitor:maintain` não impede a limpeza:** a falha é impressa (`<error>`), a limpeza de brutos e de agregados roda mesmo assim (o teto de 4 × `rawDays` continua valendo com o rollup quebrado) e o comando termina com **exit code 1**. Se a limpeza também falhar, as duas falhas são impressas.
 - Rodar `monitor:rollup` ou `monitor:prune` isoladamente é seguro; o `monitor:maintain` é só a composição dos dois, na ordem rollup, brutos, agregados.
 
 ---
@@ -700,10 +700,10 @@ Se preferir separar as etapas, agende `monitor:rollup` e `monitor:prune` isolada
 
 ### Ordem e limites da limpeza
 
-1. **Brutos** (`psf_monitor_requests`, `psf_monitor_queries`, `psf_monitor_exceptions`, `psf_monitor_external`): apaga as linhas com `ts < corte`, onde `corte = max(min(agora − raw_days, watermark), agora − 4 × raw_days)`. Ou seja, normalmente não se apaga o que ainda não foi agregado (nunca além do watermark), **mas há um teto** (`Pruner::HARD_CEILING_FACTOR = 4`). Enquanto nenhum rollup rodou (sem watermark), apaga só por `raw_days`. A remoção é em lotes de 5000 linhas, com pausa curta entre lotes, de forma portável entre os 4 drivers.
-2. **Agregados** (`psf_monitor_rollups`): apaga `bucket_hour < agora − aggregate_days`.
+1. **Brutos** (`psf_monitor_requests`, `psf_monitor_queries`, `psf_monitor_exceptions`, `psf_monitor_external`): apaga as linhas com `ts < corte`, onde `corte = max(min(agora − rawDays, watermark), agora − 4 × rawDays)`. Ou seja, normalmente não se apaga o que ainda não foi agregado (nunca além do watermark), **mas há um teto** (`Pruner::HARD_CEILING_FACTOR = 4`). Enquanto nenhum rollup rodou (sem watermark), apaga só por `rawDays`. A remoção é em lotes de 5000 linhas, com pausa curta entre lotes, de forma portável entre os 4 drivers.
+2. **Agregados** (`psf_monitor_rollups`): apaga `bucket_hour < agora − aggregateDays`.
 
-> **O teto de 4 × `raw_days` e a perda de horas.** Se o rollup ficar parado por muito tempo (cron quebrado, banco fora do ar), as linhas brutas mais velhas que `4 × raw_days` são apagadas **mesmo sem terem sido agregadas**, e essas horas ficam perdidas: ao voltar, o rollup recomeça do watermark, mas já não há linhas brutas para elas (os agregados dessas horas saem zerados/ausentes). Sem o teto, um rollup parado faria as tabelas brutas crescerem sem limite. Com o default (`raw_days = 7`) o rollup pode ficar parado por até 28 dias sem perda; monitore o `Rollup até` do `monitor:status`.
+> **O teto de 4 × `rawDays` e a perda de horas.** Se o rollup ficar parado por muito tempo (cron quebrado, banco fora do ar), as linhas brutas mais velhas que `4 × rawDays` são apagadas **mesmo sem terem sido agregadas**, e essas horas ficam perdidas: ao voltar, o rollup recomeça do watermark, mas já não há linhas brutas para elas (os agregados dessas horas saem zerados/ausentes). Sem o teto, um rollup parado faria as tabelas brutas crescerem sem limite. Com o default (`rawDays = 7`) o rollup pode ficar parado por até 28 dias sem perda; monitore o `Rollup até` do `monitor:status`.
 
 ---
 
@@ -715,11 +715,11 @@ Rode `monitor:install` **antes ou junto de cada atualização do framework** (é
 vendor/bin/psf monitor:install
 ```
 
-- **Projeto que instalou o monitor na fase 1** (só `psf_monitor_requests`, `psf_monitor_state` e `psf_monitor_rollups`): o `monitor:install` cria `psf_monitor_queries` e `psf_monitor_exceptions`. Enquanto elas não existirem, o lote do request (request + queries + exceções) é gravado numa única transação que **falha e é desfeita por inteiro**: nada é gravado, nem a linha do request, e, após `breaker.failures` falhas seguidas, o breaker abre e registra `[PSF][monitor] gravação suspensa ...`, que normalmente (quando a mensagem do banco indica tabela ausente) termina com `Tabelas ausentes: rode monitor:install.`. A aplicação em si não é afetada. Com `auto_migrate` ligado fora de `prd`, as tabelas novas são criadas sozinhas no primeiro flush.
+- **Projeto que instalou o monitor na fase 1** (só `psf_monitor_requests`, `psf_monitor_state` e `psf_monitor_rollups`): o `monitor:install` cria `psf_monitor_queries` e `psf_monitor_exceptions`. Enquanto elas não existirem, o lote do request (request + queries + exceções) é gravado numa única transação que **falha e é desfeita por inteiro**: nada é gravado, nem a linha do request, e, após `breaker.failures` falhas seguidas, o breaker abre e registra `[PSF][monitor] gravação suspensa ...`, que normalmente (quando a mensagem do banco indica tabela ausente) termina com `Tabelas ausentes: rode monitor:install.`. A aplicação em si não é afetada. Com `autoMigrate` ligado fora de `prd`, as tabelas novas são criadas sozinhas no primeiro flush.
 - **Projeto da fase 2**: a fase 3 não acrescenta tabelas nem migrations; basta agendar o `monitor:maintain` (ver [Retenção e manutenção](#retenção-e-manutenção)). Até lá, `psf_monitor_rollups` fica vazia e o `Reader` devolve listas vazias.
 - **Colunas `NOT NULL` (correção desta versão).** O Phinx 0.16 cria colunas **anuláveis** por padrão; as migrations do monitor passaram a declarar `'null' => false` em tudo o que o [contrato](#esquema-das-tabelas-contrato) não marca como `null`. No **MySQL** a instalação antes **falhava** (chave primária com colunas anuláveis) e agora funciona. Instalações já feitas em SQLite ou PostgreSQL **mantêm** as colunas anuláveis (migrations já aplicadas não são reexecutadas); isso é inofensivo, pois o monitor sempre preenche essas colunas. Para alinhar ao contrato, recrie as tabelas do monitor (apague-as e a `psf_monitor_migrations`, e rode `monitor:install`; os dados brutos e agregados se perdem).
-- **Projeto da fase 3 (instalação com cinco tabelas)**: a fase 4 acrescenta `psf_monitor_external` (migration `20261026000001_psf_monitor_create_external.php`). **Rode `vendor/bin/psf monitor:install`** (idempotente: só a migration nova roda). Enquanto a tabela não existir: (1) as gravações **falham de forma segura**: o lote de todo request gravado **que teve chamadas externas** é desfeito por inteiro (nada é gravado, nem a linha do request; requests sem chamadas externas continuam sendo gravados normalmente), o breaker abre depois de `breaker.failures` falhas e registra **uma** linha de `error_log` (normalmente terminando com `Tabelas ausentes: rode monitor:install.`); a aplicação não é afetada; (2) `monitor:rollup`, `monitor:prune` e `monitor:maintain` falham com `no such table` (ou o equivalente do driver), porque leem/limpam as quatro tabelas brutas; (3) `monitor:status` mostra `Instalado: não`. Com `auto_migrate` ligado fora de `prd`, a tabela nova é criada sozinha no primeiro flush (só a migration pendente roda).
-- **Chamadas externas e API não exigem configuração nova**: as chamadas passam a ser registradas assim que a tabela existe. As chaves `slow_ms.external` e `api.enabled` têm default; a `MonitorApi` continua desligada até você ligar `api.enabled`.
+- **Projeto da fase 3 (instalação com cinco tabelas)**: a fase 4 acrescenta `psf_monitor_external` (migration `20261026000001_psf_monitor_create_external.php`). **Rode `vendor/bin/psf monitor:install`** (idempotente: só a migration nova roda). Enquanto a tabela não existir: (1) as gravações **falham de forma segura**: o lote de todo request gravado **que teve chamadas externas** é desfeito por inteiro (nada é gravado, nem a linha do request; requests sem chamadas externas continuam sendo gravados normalmente), o breaker abre depois de `breaker.failures` falhas e registra **uma** linha de `error_log` (normalmente terminando com `Tabelas ausentes: rode monitor:install.`); a aplicação não é afetada; (2) `monitor:rollup`, `monitor:prune` e `monitor:maintain` falham com `no such table` (ou o equivalente do driver), porque leem/limpam as quatro tabelas brutas; (3) `monitor:status` mostra `Instalado: não`. Com `autoMigrate` ligado fora de `prd`, a tabela nova é criada sozinha no primeiro flush (só a migration pendente roda).
+- **Chamadas externas e API não exigem configuração nova**: as chamadas passam a ser registradas assim que a tabela existe. As chaves `slowMs.external` e `api.enabled` têm default; a `MonitorApi` continua desligada até você ligar `api.enabled`.
 
 ---
 
@@ -754,7 +754,7 @@ Sem `PSF_DRIVERS=1` todos os testes de `tests/Drivers` são **pulados** com o mo
 | `PSF_PGSQL_HOST` / `PSF_PGSQL_PORT` | `127.0.0.1` / `35432` |
 | `PSF_PGSQL_USER` / `PSF_PGSQL_PASSWORD` | `postgres` / `psf_test_root` |
 
-**O que é validado em cada driver:** `Installer::install()` com as migrations reais (6 tabelas, tipos, `bigint` identity, decimais, `text`, colunas anuláveis do contrato, índices e chaves primárias), reexecução idempotente e atualização de uma instalação parcial; `Connection::open` com o timeout aceito pelo driver; `DatabaseSink` (pesos fracionários, `NULL`, rota/alvo de 191 caracteres multibyte, SQL de 2000 caracteres, trace de 16 KB e mensagem de 500 caracteres de 4 bytes, lote de 1200 linhas em chunks, rollback da transação inteira com linha inválida em vários tipos de erro); o fluxo completo do `Monitor` com os shims `Create::exe/batch`, `Read::exe`, `Update::exe` e `Delete::exe` numa tabela descartável; a limpeza de mensagens contra erros **reais** de chave duplicada, `NOT NULL` e inteiro inválido; `auto_migrate` (com o lock); o circuit breaker com porta recusada e host que não responde (timeout respeitado); `Rollup` (as quatro métricas, reagregação, idempotência, fusão de chaves, hora pulada por violação de integridade real, `maxHours`); `Watermark` (dentro e fora de transação, e a corrida de INSERT); `Pruner` (lotes com `LIMIT`, watermark, teto, agregados); `Reader` (todos os métodos e ordenações, faixas, fusos, limites, lotes de `IN`, percentis, `avg_ms` sem divisão inteira); `MonitorApi`; os comandos `monitor:*`; e prepares emulados e nativos.
+**O que é validado em cada driver:** `Installer::install()` com as migrations reais (6 tabelas, tipos, `bigint` identity, decimais, `text`, colunas anuláveis do contrato, índices e chaves primárias), reexecução idempotente e atualização de uma instalação parcial; `Connection::open` com o timeout aceito pelo driver; `DatabaseSink` (pesos fracionários, `NULL`, rota/alvo de 191 caracteres multibyte, SQL de 2000 caracteres, trace de 16 KB e mensagem de 500 caracteres de 4 bytes, lote de 1200 linhas em chunks, rollback da transação inteira com linha inválida em vários tipos de erro); o fluxo completo do `Monitor` com os shims `Create::exe/batch`, `Read::exe`, `Update::exe` e `Delete::exe` numa tabela descartável; a limpeza de mensagens contra erros **reais** de chave duplicada, `NOT NULL` e inteiro inválido; `autoMigrate` (com o lock); o circuit breaker com porta recusada e host que não responde (timeout respeitado); `Rollup` (as quatro métricas, reagregação, idempotência, fusão de chaves, hora pulada por violação de integridade real, `maxHours`); `Watermark` (dentro e fora de transação, e a corrida de INSERT); `Pruner` (lotes com `LIMIT`, watermark, teto, agregados); `Reader` (todos os métodos e ordenações, faixas, fusos, limites, lotes de `IN`, percentis, `avg_ms` sem divisão inteira); `MonitorApi`; os comandos `monitor:*`; e prepares emulados e nativos.
 
 **Defeitos encontrados e corrigidos** (cada um com teste):
 
@@ -767,7 +767,7 @@ Sem `PSF_DRIVERS=1` todos os testes de `tests/Drivers` são **pulados** com o mo
 
 - **MySQL: colisão por acento.** O `GROUP BY` já agrupa pela collation da coluna (`utf8mb4_unicode_ci`, criada pelo Phinx), então `/café` e `/cafe` viram um só grupo. A colisão na chave primária de `psf_monitor_rollups` só acontece quando o corte em 191 caracteres produz chaves que diferem apenas por acento; nesse caso a hora é pulada (validado no MySQL real).
 - **Precisão de `sum_ms`.** `sum_ms` é `decimal(18,2)`: `Σ peso × duração` é arredondado a 2 casas por hora (ex.: `2.5 × 40.25 = 100.625` vira `100.63`), então `avg_ms` pode diferir em milésimos de milissegundo do que o SQLite (que guarda o valor exato) devolve.
-- **`connect_timeout` no PostgreSQL.** A libpq trata valores abaixo de 2 s como 2 s; no MySQL vale o valor configurado.
+- **`connectTimeout` no PostgreSQL.** A libpq trata valores abaixo de 2 s como 2 s; no MySQL vale o valor configurado.
 - **Tipos nas linhas brutas.** `Reader::request()` devolve as linhas como o driver devolve: nos dois bancos, inteiros vêm como `int` e decimais como `string` (`"12.50"`); o restante do `Reader` já devolve `float`.
 - **Corrida do watermark no MySQL.** Em `REPEATABLE READ` o UPDATE sem linha já trava a lacuna da chave e o INSERT concorrente espera o commit; a corrida só acontece no PostgreSQL (coberta pelo item 4).
 
@@ -789,17 +789,17 @@ Sem `PSF_DRIVERS=1` todos os testes de `tests/Drivers` são **pulados** com o mo
 - **Exceção não capturada (linha dupla).** Uma exceção que chega ao topo **sem** um handler global (`set_exception_handler`) termina o PHP com "Uncaught ...", um fatal: se ela já tinha sido registrada (pelo `Router`, no caso de `\Error`/`TypeError` e das falhas 5xx, ou por `Monitor::exception($e)` da aplicação), são gravadas **duas** linhas, a da exceção e uma de `FatalError`. O `settings.php` do framework registra o Ignition como handler global; nesse caso não há fatal e a exceção aparece uma vez só.
 - **`prepare()` que falha.** Em `Read`, `Update` e `Delete` a exceção é registrada, mas nenhuma query (ela não chegou a executar).
 - **Normalizador de SQL.** Para SQL escrito à mão: (1) no MySQL sem `ANSI_QUOTES`, valores entre aspas duplas fora de posições reconhecidas (depois de operador de comparação/`LIKE`/`THEN`/`ELSE`/lista `IN`), por exemplo argumentos de função `f(x, "s")` ou row values, podem sobreviver ao normalizador; prefira aspas simples ou bindings (a limitação é só do normalizador de SQL; a limpeza de mensagens de exceção redige qualquer `"..."`); (2) `#` é tratado como comentário do MySQL (no PostgreSQL é o operador XOR); (3) `VALUES(col)` dentro de `ON DUPLICATE KEY UPDATE` é colapsado; (4) sem `ext-mbstring`, UTF-8 inválido cai no fallback de trocar bytes não ASCII por `?`. Na dúvida o tokenizador redige demais.
-- **`connect_timeout` é só um default.** Se o `extras` do banco definir `PDO::ATTR_TIMEOUT`, ele prevalece. No SQL Server o timeout vai como `LoginTimeout=<connect_timeout>` no DSN (nunca como `PDO::ATTR_TIMEOUT`, que o pdo_sqlsrv rejeita); se o DSN já tiver um `LoginTimeout`, ele prevalece. O `ERRMODE` é sempre forçado para exceções.
+- **`connectTimeout` é só um default.** Se o `extras` do banco definir `PDO::ATTR_TIMEOUT`, ele prevalece. No SQL Server o timeout vai como `LoginTimeout=<connectTimeout>` no DSN (nunca como `PDO::ATTR_TIMEOUT`, que o pdo_sqlsrv rejeita); se o DSN já tiver um `LoginTimeout`, ele prevalece. O `ERRMODE` é sempre forçado para exceções.
 - **Conexão dedicada.** O monitor abre a própria conexão PDO (sem passar por `Connect`): não herda transações da aplicação e não é instrumentado. Por isso, consome uma conexão extra por request gravado.
-- **`auto_migrate`**: opt-in; recusado quando `environment` é exatamente `'prd'` (outras grafias não contam; ausente conta como `dev`); o lock é por host (diretório temporário); a flag é lida por truthiness, use booleano real.
-- **Phinx.** É dependência de desenvolvimento do framework: projetos precisam de `robmorgan/phinx` instalado para os comandos `monitor:*` e o `auto_migrate`.
+- **`autoMigrate`**: opt-in; recusado quando `environment` é exatamente `'prd'` (outras grafias não contam; ausente conta como `dev`); o lock é por host (diretório temporário); a flag é lida por truthiness, use booleano real.
+- **Phinx.** É dependência de desenvolvimento do framework: projetos precisam de `robmorgan/phinx` instalado para os comandos `monitor:*` e o `autoMigrate`.
 - **Limites de tamanho** (em caracteres): `method` maiúsculo `[A-Z]` com até 10; `env` até 20; `release` até 64; `route` até 191; `user_id` até 64. No SQL Server, `varchar` não-N conta **bytes**, então rotas e `user_id` multibyte podem estourar a coluna nesse driver (a gravação falha e conta para o breaker).
 - **`env` e `release` vêm da configuração.** `env` de `config['environment']` (padrão `dev`), `release` de `settings.monitor.release`. O framework não os detecta sozinho.
 - **Agregados são estimativas ponderadas.** `hits`, `errors`, `sum_ms` e o histograma somam `sample_weight` (estimativa não enviesada, com variância maior em rotas de pouco tráfego); p50/p95/p99 são interpolados dentro do bucket.
 - **`max_ms` só considera linhas gravadas.** Requests normais não amostrados não entram; lentos e erros são sempre gravados, então na prática o máximo é fiel.
-- **Teto por request.** Queries, chamadas externas e exceções acima do teto por request (`max_events_per_request` em cada tipo, 20 exceções) são descartadas e **não entram** nos agregados: `hits` de `query`, `external` e `exception` é um piso.
+- **Teto por request.** Queries, chamadas externas e exceções acima do teto por request (`maxEventsPerRequest` em cada tipo, 20 exceções) são descartadas e **não entram** nos agregados: `hits` de `query`, `external` e `exception` é um piso.
 - **Dado agregado atrasa até ~1 h 5 min** (hora completa + 300 s de folga); linhas brutas atrasadas entram se o `ts` estiver nas 2 horas anteriores ao watermark (reagregação); mais atrasadas se perdem.
-- **Teto de 4 × `raw_days` do prune.** Com o rollup parado por mais que isso, as horas sem agregar são perdidas (ver [Retenção e manutenção](#retenção-e-manutenção)).
+- **Teto de 4 × `rawDays` do prune.** Com o rollup parado por mais que isso, as horas sem agregar são perdidas (ver [Retenção e manutenção](#retenção-e-manutenção)).
 
 ---
 
@@ -814,14 +814,14 @@ Sem `PSF_DRIVERS=1` todos os testes de `tests/Drivers` são **pulados** com o mo
 
 ### Breaker aberto (linhas `[PSF][monitor]` no log)
 
-O breaker registra **uma** linha quando abre; durante `breaker.cooldown_seconds` nada é gravado. As mensagens possíveis:
+O breaker registra **uma** linha quando abre; durante `breaker.cooldownSeconds` nada é gravado. As mensagens possíveis:
 
 | Mensagem | Causa e ação |
 |----------|--------------|
 | `[PSF][monitor] gravação suspensa por <N>s após falhas consecutivas: <Classe>: <mensagem>.` | `breaker.failures` gravações seguidas falharam (banco fora do ar, credencial, timeout, coluna estourada...). Corrija a causa indicada; a gravação volta sozinha depois do cooldown. |
 | ... seguida de `Tabelas ausentes: rode monitor:install.` | A mensagem do banco indica tabela inexistente. Rode `monitor:install` no banco do monitor. |
-| `[PSF][monitor] auto_migrate ignorado em prd; rode monitor:install` | `auto_migrate` ligado com `environment = 'prd'` e tabelas ausentes. Rode `monitor:install`. |
-| `[PSF][monitor] auto_migrate indisponível: <causa>` | O `auto_migrate` não conseguiu instalar (sem Phinx, sem permissão de DDL, falha no arquivo de lock). Corrija a causa ou rode `monitor:install`. |
+| `[PSF][monitor] autoMigrate ignorado em prd; rode monitor:install` | `autoMigrate` ligado com `environment = 'prd'` e tabelas ausentes. Rode `monitor:install`. |
+| `[PSF][monitor] autoMigrate indisponível: <causa>` | O `autoMigrate` não conseguiu instalar (sem Phinx, sem permissão de DDL, falha no arquivo de lock). Corrija a causa ou rode `monitor:install`. |
 
 Para não esperar o cooldown, apague o estado do breaker: o arquivo `psf-monitor-<md5('db:<database>')>.json` em `sys_get_temp_dir()` ou, com APCu, a chave de mesmo nome (sem `.json`) no APCu do SAPI da aplicação (o APCu da CLI é outro).
 
@@ -833,7 +833,7 @@ Para não esperar o cooldown, apague o estado do breaker: o arquivo `psf-monitor
 
 - `Rollup até` mais de ~1 h 5 min atrás de agora: o cron do `monitor:maintain` não está rodando ou está falhando (exit code 1 e linhas `<error>` no log do cron).
 - Backlog grande: cada execução agrega no máximo `--max-hours` horas novas (48 por padrão). Para alcançar o presente mais rápido, rode `vendor/bin/psf monitor:rollup --max-hours 1000`.
-- Atenção ao teto: com o rollup parado por mais de `4 × raw_days` dias, o prune apaga brutos ainda não agregados e essas horas ficam sem agregados (ver [Retenção e manutenção](#ordem-e-limites-da-limpeza)).
+- Atenção ao teto: com o rollup parado por mais de `4 × rawDays` dias, o prune apaga brutos ainda não agregados e essas horas ficam sem agregados (ver [Retenção e manutenção](#ordem-e-limites-da-limpeza)).
 - `Rollup até: nunca` com dados brutos presentes: o rollup nunca rodou (ou a leitura do watermark falhou, no caso do `monitor:status`).
 
 ### Hora pulada
@@ -850,8 +850,8 @@ A saída mostra `Horas puladas: N` e o aviso de violação de integridade: uma h
 
 ## Evolução
 
-- **Fase 1 (entregue):** requests, `X-Request-Id`, amostragem por peso, conexão dedicada, circuit breaker, `auto_migrate`, comandos `monitor:install`, `monitor:status` e `monitor:prune`.
+- **Fase 1 (entregue):** requests, `X-Request-Id`, amostragem por peso, conexão dedicada, circuit breaker, `autoMigrate`, comandos `monitor:install`, `monitor:status` e `monitor:prune`.
 - **Fase 2 (entregue):** queries SQL (normalizadas) e exceções, inclusive erros fatais, com limpeza de mensagens.
-- **Fase 3 (entregue):** rollups por hora com histograma e percentis, `Reader`, comandos `monitor:rollup` e `monitor:maintain`, teto de 4 × `raw_days` no prune.
+- **Fase 3 (entregue):** rollups por hora com histograma e percentis, `Reader`, comandos `monitor:rollup` e `monitor:maintain`, teto de 4 × `rawDays` no prune.
 - **Fase 4, Parte A (entregue):** chamadas externas (`Request`, `Http::request`, `Email`, `CloudStorage` e `Monitor::trackExternal`/`external`/`externalStart`/`externalEnd`) gravadas em `psf_monitor_external`, métrica `external` nos rollups, `Reader::external()` e a chave `external` de `Reader::request()`, e o serviço JSON opcional `MonitorApi` (desligado por padrão).
 - **Fase 4, Parte B (entregue para MySQL e PostgreSQL):** suíte `tests/Drivers` contra MySQL 8.4 e PostgreSQL 16 reais e as correções que ela revelou (ver [Validação em bancos reais](#validação-em-bancos-reais)). **SQL Server pendente** (driver ODBC da Microsoft não instalado no ambiente de validação).

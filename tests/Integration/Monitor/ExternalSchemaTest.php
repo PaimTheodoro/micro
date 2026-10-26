@@ -144,7 +144,7 @@ it('upgrades a phase-3 install', function () {
         ->and(externalCount($sqlite, Installer::MIGRATION_TABLE))->toBe(6);
 });
 
-it('fails safely on a phase-3 schema without auto_migrate', function () {
+it('fails safely on a phase-3 schema without autoMigrate', function () {
     $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0]]);
     externalPhase3Schema($sqlite);
 
@@ -161,8 +161,8 @@ it('fails safely on a phase-3 schema without auto_migrate', function () {
     expect(externalCount($sqlite, 'psf_monitor_requests'))->toBe(0);
 });
 
-it('fails safely on a phase-3 schema and auto_migrate installs only the new table', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+it('fails safely on a phase-3 schema and autoMigrate installs only the new table', function () {
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     externalPhase3Schema($sqlite);
     $before = externalPdo($sqlite)->query('SELECT version FROM ' . Installer::MIGRATION_TABLE . ' ORDER BY version')
         ->fetchAll(PDO::FETCH_COLUMN);

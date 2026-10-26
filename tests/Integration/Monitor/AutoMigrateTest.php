@@ -34,7 +34,7 @@ function autoLogLines(): array
     return $raw === false ? [] : array_values(array_filter(explode("\n", $raw), fn ($l) => str_contains($l, '[PSF][monitor]')));
 }
 
-/** Liga o monitor com auto_migrate e injeta breaker e migrator de teste; faz o boot. */
+/** Liga o monitor com autoMigrate e injeta breaker e migrator de teste; faz o boot. */
 function autoStart(?Installer $installer = null, string $env = 'dev', ?SinkInterface $sink = null): void
 {
     Monitor::reset();
@@ -64,7 +64,7 @@ afterEach(function () {
     @rmdir($this->dir);
 });
 
-it('does nothing when auto_migrate is off', function () {
+it('does nothing when autoMigrate is off', function () {
     $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0]]);
     autoStart();
 
@@ -75,7 +75,7 @@ it('does nothing when auto_migrate is off', function () {
 });
 
 it('creates the tables and writes the batch', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     autoStart();
 
     Monitor::flush(200);
@@ -88,7 +88,7 @@ it('creates the tables and writes the batch', function () {
 
 it('refuses to migrate in prd', function () {
     $sqlite = monitorUseConfig(
-        ['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true],
+        ['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true],
         ['environment' => 'prd']
     );
     autoStart(null, 'prd');
@@ -106,7 +106,7 @@ it('refuses to migrate in prd', function () {
 
 it('takes the environment from the PSF config by default', function () {
     $sqlite = monitorUseConfig(
-        ['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true],
+        ['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true],
         ['environment' => 'prd']
     );
     Monitor::reset();
@@ -122,7 +122,7 @@ it('takes the environment from the PSF config by default', function () {
 });
 
 it('discards the batch without failing when the lock is taken', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
 
     $lock = fopen($this->dir . '/psf-monitor-' . md5('default') . '.lock', 'c');
     expect(flock($lock, LOCK_EX | LOCK_NB))->toBeTrue();
@@ -144,7 +144,7 @@ it('discards the batch without failing when the lock is taken', function () {
 });
 
 it('is idempotent on later requests', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
 
     autoStart();
     Monitor::flush(200);
@@ -156,7 +156,7 @@ it('is idempotent on later requests', function () {
 });
 
 it('returns migrated without migrating when another request already did', function () {
-    monitorUseConfig(['enabled' => true, 'auto_migrate' => true]);
+    monitorUseConfig(['enabled' => true, 'autoMigrate' => true]);
     $installer = new class () extends Installer {
         public int $installs = 0;
 
@@ -176,7 +176,7 @@ it('returns migrated without migrating when another request already did', functi
 });
 
 it('opens the breaker when migrating is not possible', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     $installer = new class () extends Installer {
         public function install(): void
         {
@@ -201,7 +201,7 @@ it('opens the breaker when migrating is not possible', function () {
 });
 
 it('does not migrate when the write fails with the schema present', function () {
-    monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     $installer = new class () extends Installer {
         public int $installs = 0;
 
@@ -230,7 +230,7 @@ it('does not migrate when the write fails with the schema present', function () 
 });
 
 it('does not migrate when the schema check itself fails', function () {
-    monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     $installer = new class () extends Installer {
         public int $installs = 0;
 
@@ -259,7 +259,7 @@ it('does not migrate when the schema check itself fails', function () {
 });
 
 it('reports unavailable when the lock file cannot be opened', function () {
-    monitorUseConfig(['enabled' => true, 'auto_migrate' => true]);
+    monitorUseConfig(['enabled' => true, 'autoMigrate' => true]);
 
     $migrator = new AutoMigrator(new Installer(), 'dev', $this->dir . '/nao-existe');
     expect($migrator->run())->toBe(AutoMigrator::UNAVAILABLE)
@@ -267,7 +267,7 @@ it('reports unavailable when the lock file cannot be opened', function () {
 });
 
 it('treats a flock failure that is not contention as unavailable, tripping the breaker', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     $failingFlock = function ($handle, int $operation, &$wouldBlock): bool {
         $wouldBlock = false;
         return false;
@@ -292,7 +292,7 @@ it('treats a flock failure that is not contention as unavailable, tripping the b
 });
 
 it('rewrites the full batch (requests, queries and exceptions) after migrating', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     autoStart();
     Monitor::useFatalProvider(fn () => null);
 
@@ -327,7 +327,7 @@ function autoRecordEvents(): void
     Monitor::exception(new RuntimeException('x'));
 }
 
-it('fails safely on a phase-1 schema without auto_migrate', function () {
+it('fails safely on a phase-1 schema without autoMigrate', function () {
     $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0]]);
     autoPhase1Schema($sqlite);
 
@@ -348,8 +348,8 @@ it('fails safely on a phase-1 schema without auto_migrate', function () {
     expect(autoCount($sqlite, 'psf_monitor_requests'))->toBe(0);
 });
 
-it('installs the new tables with auto_migrate in dev and rewrites the batch', function () {
-    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+it('installs the new tables with autoMigrate in dev and rewrites the batch', function () {
+    $sqlite = monitorUseConfig(['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
     autoPhase1Schema($sqlite);
 
     autoStart();

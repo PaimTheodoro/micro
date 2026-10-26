@@ -16,7 +16,7 @@ final class Sampler
      *
      * @param float|null $rand          Valor em [0, 1); padrão aleatório.
      * @param float      $maxExternalMs Maior duração de chamada externa do request
-     *                                  (mantém com peso 1 se >= `slow_ms.external`).
+     *                                  (mantém com peso 1 se >= `slowMs.external`).
      */
     public static function weight(
         int $status,
@@ -29,9 +29,9 @@ final class Sampler
         if (
             $status >= 500
             || $hasException
-            || $durationMs >= (float) Config::get('slow_ms.request')
-            || $maxQueryMs >= (float) Config::get('slow_ms.query')
-            || ($maxExternalMs > 0.0 && $maxExternalMs >= (float) Config::get('slow_ms.external'))
+            || $durationMs >= (float) Config::get('slowMs.request')
+            || $maxQueryMs >= (float) Config::get('slowMs.query')
+            || ($maxExternalMs > 0.0 && $maxExternalMs >= (float) Config::get('slowMs.external'))
         ) {
             return 1.0;
         }

@@ -16,7 +16,7 @@ use Psf\Monitor\Reader;
 | Fluxo completo do Monitor (boot → ganchos → flush) gravando pelo DatabaseSink
 | real, com os shims Create/Read/Update/Delete instrumentados numa tabela
 | descartável, o scrubber de mensagens contra erros REAIS dos drivers, o
-| auto_migrate e o circuit breaker com banco inalcançável.
+| autoMigrate e o circuit breaker com banco inalcançável.
 */
 
 beforeEach(function () {
@@ -216,8 +216,8 @@ it('scrubs row values from real driver error messages', function (string $driver
     }
 })->with('drivers');
 
-it('installs the schema at runtime with auto_migrate (non-prd, file lock) and writes the batch', function (string $driver) {
-    driverUse($driver, ['enabled' => true, 'sample' => ['normal' => 1.0], 'auto_migrate' => true]);
+it('installs the schema at runtime with autoMigrate (non-prd, file lock) and writes the batch', function (string $driver) {
+    driverUse($driver, ['enabled' => true, 'sample' => ['normal' => 1.0], 'autoMigrate' => true]);
 
     $breaker = flowBoot(new AutoMigrator(new Installer(), 'dev', $this->dir));
     Monitor::queryEnd(Monitor::queryStart(), 'SELECT 1');
@@ -246,7 +246,7 @@ it('installs the schema at runtime with auto_migrate (non-prd, file lock) and wr
 })->with('drivers');
 
 it('opens the breaker against an unreachable port without throwing', function (string $driver) {
-    driverUse($driver, ['enabled' => true, 'sample' => ['normal' => 1.0], 'connect_timeout' => 1], ['db' => ['default' => ['port' => 1]]]);
+    driverUse($driver, ['enabled' => true, 'sample' => ['normal' => 1.0], 'connectTimeout' => 1], ['db' => ['default' => ['port' => 1]]]);
 
     $breaker = null;
     for ($i = 0; $i < 3; $i++) {
@@ -275,8 +275,8 @@ it('opens the breaker against an unreachable port without throwing', function (s
 })->with('drivers');
 
 it('honours the connect timeout against a host that does not answer', function (string $driver) {
-    // 10.255.255.1: endereço não roteável (SYN sem resposta); o connect_timeout limita a espera.
-    driverUse($driver, ['enabled' => true, 'sample' => ['normal' => 1.0], 'connect_timeout' => 1], ['db' => ['default' => ['host' => '10.255.255.1']]]);
+    // 10.255.255.1: endereço não roteável (SYN sem resposta); o connectTimeout limita a espera.
+    driverUse($driver, ['enabled' => true, 'sample' => ['normal' => 1.0], 'connectTimeout' => 1], ['db' => ['default' => ['host' => '10.255.255.1']]]);
     $breaker = flowBoot(null, 1);
 
     $t = microtime(true);

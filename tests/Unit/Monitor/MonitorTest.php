@@ -89,7 +89,7 @@ it('exposes the request id header only when enabled', function () {
     monitorStart([]);
     expect(Monitor::responseHeaders())->toBe(['X-Request-Id' => Monitor::requestId()]);
 
-    monitorStart(['expose_request_id' => false]);
+    monitorStart(['exposeRequestId' => false]);
     expect(Monitor::responseHeaders())->toBe([]);
 
     Config::fake(['enabled' => false]);
@@ -185,8 +185,8 @@ it('resolves the user id defensively', function (array $settings, mixed $auth, ?
     'id não escalar'   => [[], ['id' => ['x']], null],
     'id booleano'      => [[], ['id' => true], null],
     'id longo'         => [[], ['id' => str_repeat('9', 100)], str_repeat('9', 64)],
-    'store_user false' => [['store_user' => false], ['id' => 7], null],
-    'propriedade'      => [['user_id_property' => 'uid'], (object) ['uid' => 'u-1'], 'u-1'],
+    'storeUser false' => [['storeUser' => false], ['id' => 7], null],
+    'propriedade'      => [['userIdProperty' => 'uid'], (object) ['uid' => 'u-1'], 'u-1'],
 ]);
 
 it('never throws and opens the breaker after repeated sink failures', function () {
@@ -250,8 +250,8 @@ it('cuts multibyte route and user id without splitting characters', function () 
         ->and(mb_strlen($row['user_id'], 'UTF-8'))->toBe(64);
 });
 
-it('returns null for a misconfigured user_id_property', function (mixed $property) {
-    Config::fake(['enabled' => true, 'user_id_property' => $property]);
+it('returns null for a misconfigured userIdProperty', function (mixed $property) {
+    Config::fake(['enabled' => true, 'userIdProperty' => $property]);
     Monitor::user(['id' => 7, 0 => 9]);
     expect(Monitor::snapshot()['user_id'])->toBeNull();
 })->with([
@@ -261,8 +261,8 @@ it('returns null for a misconfigured user_id_property', function (mixed $propert
     'null'   => [null],
 ]);
 
-it('accepts an int user_id_property', function () {
-    Config::fake(['enabled' => true, 'user_id_property' => 0]);
+it('accepts an int userIdProperty', function () {
+    Config::fake(['enabled' => true, 'userIdProperty' => 0]);
     Monitor::user([0 => 9]);
     expect(Monitor::snapshot()['user_id'])->toBe('9');
 });

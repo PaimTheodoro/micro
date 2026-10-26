@@ -255,7 +255,7 @@ it('prunes raw rows in batches up to the watermark and the 4x ceiling, and old a
     expect((new Pruner($pdo, driverDialect(), 5000, 0))->pruneRaw($now, 7))->toBe(4);
     expect($remaining('psf_monitor_requests'))->toBe(['d8', 'd1']);
 
-    // Sem watermark: corta em raw_days.
+    // Sem watermark: corta em rawDays.
     $pdo->exec('DELETE FROM psf_monitor_state');
     expect((new Pruner($pdo, driverDialect(), 1, 0))->pruneRaw($now, 7))->toBe(4);
     expect($remaining('psf_monitor_requests'))->toBe(['d1']);

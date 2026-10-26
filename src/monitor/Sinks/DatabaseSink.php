@@ -80,7 +80,7 @@ final class DatabaseSink implements SinkInterface
     }
 
     /**
-     * Indica se as tabelas do monitor existem no banco (usado pelo auto_migrate).
+     * Indica se as tabelas do monitor existem no banco (usado pelo autoMigrate).
      *
      * @throws \PDOException falha ao consultar o banco
      */

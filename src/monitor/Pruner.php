@@ -15,10 +15,10 @@ final class Pruner
     /** Tabelas brutas com colunas `id` e `ts` (também usadas pelo Rollup). */
     public const RAW_TABLES = ['psf_monitor_requests', 'psf_monitor_queries', 'psf_monitor_exceptions', 'psf_monitor_external'];
 
-    /** Teto: linhas brutas nunca passam de 4 x raw_days, mesmo com o rollup parado. */
+    /** Teto: linhas brutas nunca passam de 4 x rawDays, mesmo com o rollup parado. */
     public const HARD_CEILING_FACTOR = 4;
 
-    /** Teto de raw_days (evita estouro em `raw_days * 4`). */
+    /** Teto de rawDays (evita estouro em `rawDays * 4`). */
     public const MAX_RAW_DAYS = 36500;
 
     private const FORMAT = 'Y-m-d H:i:s';
@@ -50,10 +50,10 @@ final class Pruner
     public function pruneRaw(\DateTimeImmutable $now, int $rawDays): int
     {
         if ($rawDays < 1) {
-            throw new \InvalidArgumentException('raw_days inválido: informe um inteiro >= 1.');
+            throw new \InvalidArgumentException('rawDays inválido: informe um inteiro >= 1.');
         }
         if ($rawDays > self::MAX_RAW_DAYS) {
-            throw new \InvalidArgumentException('raw_days inválido: informe um inteiro entre 1 e ' . self::MAX_RAW_DAYS . '.');
+            throw new \InvalidArgumentException('rawDays inválido: informe um inteiro entre 1 e ' . self::MAX_RAW_DAYS . '.');
         }
 
         $utc    = new \DateTimeZone('UTC');
@@ -86,7 +86,7 @@ final class Pruner
     public function pruneAggregates(\DateTimeImmutable $now, int $aggregateDays): int
     {
         if ($aggregateDays < 1) {
-            throw new \InvalidArgumentException('aggregate_days inválido: informe um inteiro >= 1.');
+            throw new \InvalidArgumentException('aggregateDays inválido: informe um inteiro >= 1.');
         }
 
         $cutoff = $now->setTimezone(new \DateTimeZone('UTC'))

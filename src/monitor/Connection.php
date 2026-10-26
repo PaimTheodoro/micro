@@ -17,7 +17,7 @@ final class Connection
 {
     /**
      * Abre uma nova conexão PDO para a chave `$database` de config['db'], com
-     * o timeout curto do monitor (`connect_timeout`) e ERRMODE de exceções.
+     * o timeout curto do monitor (`connectTimeout`) e ERRMODE de exceções.
      *
      * @throws \RuntimeException chave inexistente em config['db']
      * @throws \PDOException     falha ao conectar
@@ -33,7 +33,7 @@ final class Connection
         $username = $dbConfig['username'] ?? $dbConfig['user'] ?? null;
         $password = $dbConfig['password'] ?? $dbConfig['pass'] ?? null;
 
-        [$dsn, $options] = self::parameters($dbConfig, (int) Config::get('connect_timeout'));
+        [$dsn, $options] = self::parameters($dbConfig, (int) Config::get('connectTimeout'));
 
         return new \PDO($dsn, $username, $password, $options);
     }

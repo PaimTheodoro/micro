@@ -82,7 +82,7 @@ it('does not add the external key when there are no external calls', function ()
 });
 
 it('keeps a request with a slow external call even if dropped', function () {
-    monitorExternalStart(['sample' => ['normal' => 0.0], 'max_events_per_request' => 1]);
+    monitorExternalStart(['sample' => ['normal' => 0.0], 'maxEventsPerRequest' => 1]);
 
     Monitor::external('http', 'rapido.exemplo.com', 10.0, 200);
     Monitor::externalEnd(hrtime(true) - 1_500_000_000, 'http', 'lento.exemplo.com', 200);
@@ -97,7 +97,7 @@ it('keeps a request with a slow external call even if dropped', function () {
 });
 
 it('keeps queries and externals in separate budgets', function () {
-    monitorExternalStart(['sample' => ['normal' => 1.0], 'max_events_per_request' => 1]);
+    monitorExternalStart(['sample' => ['normal' => 1.0], 'maxEventsPerRequest' => 1]);
 
     Monitor::queryEnd(Monitor::queryStart(), 'SELECT 1');
     Monitor::external('mail', 'smtp.exemplo.com', 5.0, 200);
@@ -302,7 +302,7 @@ it('keeps a request with a slow external call in the sampler', function () {
         ->and(Sampler::weight(200, 10, false, 0.0, 0.99, 999.0))->toBeNull()
         ->and(Sampler::weight(200, 10, false, 0.0, 0.99))->toBeNull();
 
-    Config::fake(['enabled' => true, 'sample' => ['normal' => 0.0], 'slow_ms' => ['external' => 5000]]);
+    Config::fake(['enabled' => true, 'sample' => ['normal' => 0.0], 'slowMs' => ['external' => 5000]]);
     expect(Sampler::weight(200, 10, false, 0.0, 0.99, 1000.0))->toBeNull()
         ->and(Sampler::weight(200, 10, false, 0.0, 0.99, 5000.0))->toBe(1.0);
 });
@@ -310,8 +310,8 @@ it('keeps a request with a slow external call in the sampler', function () {
 it('has the new config defaults', function () {
     Config::fake([]);
 
-    expect(Config::get('slow_ms.external'))->toBe(1000)
+    expect(Config::get('slowMs.external'))->toBe(1000)
         ->and(Config::get('api.enabled'))->toBeFalse()
-        ->and(Config::get('slow_ms.request'))->toBe(1000)
-        ->and(Config::get('slow_ms.query'))->toBe(200);
+        ->and(Config::get('slowMs.request'))->toBe(1000)
+        ->and(Config::get('slowMs.query'))->toBe(200);
 });

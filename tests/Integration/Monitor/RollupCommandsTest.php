@@ -85,7 +85,7 @@ it('maintain refuses invalid retention before writing anything', function ($key)
     expect($tester->execute([]))->toBe(1);
     expect($tester->getDisplay())->toContain("retention.{$key} inválido");
     expect(rcRollupCount())->toBe(0);
-})->with(['aggregate_days', 'raw_days']);
+})->with(['aggregateDays', 'rawDays']);
 
 it('prune keeps its existing output and adds the aggregates line', function () {
     rcInsertRaw('old', '-10 days');
@@ -97,15 +97,15 @@ it('prune keeps its existing output and adds the aggregates line', function () {
     expect(strpos($tester->getDisplay(), 'Linhas apagadas'))->toBeLessThan(strpos($tester->getDisplay(), 'Agregados apagados'));
 });
 
-it('prune refuses an invalid retention.aggregate_days and deletes nothing', function () {
-    monitorUseConfig(['enabled' => true, 'retention' => ['aggregate_days' => 'abc']]);
+it('prune refuses an invalid retention.aggregateDays and deletes nothing', function () {
+    monitorUseConfig(['enabled' => true, 'retention' => ['aggregateDays' => 'abc']]);
     (new Installer())->install();
     rcInsertRaw('old', '-10 days');
     rcInsertAggregate('-100 days');
     $tester = new CommandTester(new MonitorPrune());
 
     expect($tester->execute([]))->toBe(1);
-    expect($tester->getDisplay())->toContain('retention.aggregate_days inválido');
+    expect($tester->getDisplay())->toContain('retention.aggregateDays inválido');
     expect((int) Connection::open('default')->query('SELECT COUNT(*) FROM psf_monitor_requests')->fetchColumn())->toBe(1);
     expect(rcRollupCount())->toBe(1);
 });
@@ -218,15 +218,15 @@ it('refuses out-of-range retention before any write', function (string $key, $va
     expect(rcRollupCount())->toBe(0);
     expect(rcRawCount())->toBe(1);
 })->with([
-    ['raw_days', '99999999999999999999'],
-    ['raw_days', 36501],
-    ['aggregate_days', '99999999999999999999'],
-    ['aggregate_days', 36501],
-    ['raw_days', "7\n"],
+    ['rawDays', '99999999999999999999'],
+    ['rawDays', 36501],
+    ['aggregateDays', '99999999999999999999'],
+    ['aggregateDays', 36501],
+    ['rawDays', "7\n"],
 ]);
 
 it('accepts the retention ceiling of 36500 days', function () {
-    monitorUseConfig(['enabled' => true, 'retention' => ['raw_days' => 36500, 'aggregate_days' => 36500]]);
+    monitorUseConfig(['enabled' => true, 'retention' => ['rawDays' => 36500, 'aggregateDays' => 36500]]);
     (new Installer())->install();
     $tester = new CommandTester(new MonitorMaintain());
 

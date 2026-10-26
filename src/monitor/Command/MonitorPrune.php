@@ -12,8 +12,8 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * `monitor:prune [-e banco]`: apaga brutos fora de `retention.raw_days` (respeitando
- * o watermark, com teto de 4 x raw_days) e agregados fora de `retention.aggregate_days`.
+ * `monitor:prune [-e banco]`: apaga brutos fora de `retention.rawDays` (respeitando
+ * o watermark, com teto de 4 x rawDays) e agregados fora de `retention.aggregateDays`.
  * Valida a retenção antes de apagar. Saída: `Linhas apagadas`, `Agregados apagados`.
  */
 class MonitorPrune extends Command
@@ -40,8 +40,8 @@ class MonitorPrune extends Command
             if (!is_array($dbConfig)) {
                 throw new \RuntimeException("Banco '{$db}' não encontrado em config['db'].");
             }
-            $rawDays = CommandOptions::retentionDays('raw_days');
-            $aggregateDays = CommandOptions::retentionDays('aggregate_days');
+            $rawDays = CommandOptions::retentionDays('rawDays');
+            $aggregateDays = CommandOptions::retentionDays('aggregateDays');
             $pruner = new Pruner(Connection::open($db), DialectFactory::fromConfig($dbConfig));
             $now = new \DateTimeImmutable("now", new \DateTimeZone("UTC"));
             $deleted = $pruner->pruneRaw($now, $rawDays);

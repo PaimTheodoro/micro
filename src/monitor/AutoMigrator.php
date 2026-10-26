@@ -3,7 +3,7 @@
 namespace Psf\Monitor;
 
 /**
- * Instala as tabelas do monitor em runtime quando `auto_migrate` está ligado.
+ * Instala as tabelas do monitor em runtime quando `autoMigrate` está ligado.
  *
  * Usa o mesmo `Installer` do `monitor:install`. Recusa em `prd`, serializa
  * a migração com `flock` não bloqueante num arquivo derivado da chave do banco
@@ -21,7 +21,7 @@ final class AutoMigrator
     /** Não foi possível migrar (Phinx ausente, sem DDL, I/O...). */
     public const UNAVAILABLE = 'unavailable';
 
-    /** Ambiente `prd`: auto_migrate é ignorado. */
+    /** Ambiente `prd`: autoMigrate é ignorado. */
     public const REFUSED = 'refused';
 
     private string $lockDir;
@@ -59,7 +59,7 @@ final class AutoMigrator
             }
 
             if (!class_exists(\Phinx\Migration\Manager::class)) {
-                $this->lastError = 'auto_migrate requer robmorgan/phinx';
+                $this->lastError = 'autoMigrate requer robmorgan/phinx';
                 return self::UNAVAILABLE;
             }
 

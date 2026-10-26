@@ -2,6 +2,8 @@
 
 namespace Psf\Http;
 
+use Psf\Helper\ConfigKeys;
+
 /**
  * Resolve os headers CORS a partir de `config['settings']['cors']`.
  *
@@ -10,8 +12,8 @@ namespace Psf\Http;
  *   'methods'     => ['GET', 'POST', ...]                (padrão: GET, POST, PUT, PATCH, DELETE, OPTIONS)
  *   'headers'     => ['Content-Type', 'Authorization']   (padrão: os dois acima)
  *   'credentials' => bool                                (padrão: false)
- *   'max_age'     => int segundos do cache do preflight  (padrão: 600)
- *   'expose_headers' => ['X-Request-Id']                 (padrão: nenhum — emite Access-Control-Expose-Headers)
+ *   'maxAge'     => int segundos do cache do preflight  (padrão: 600)
+ *   'exposeHeaders' => ['X-Request-Id']                 (padrão: nenhum — emite Access-Control-Expose-Headers)
  */
 class Cors
 {
@@ -25,7 +27,8 @@ class Cors
      */
     public static function resolve(array $config, ?string $origin, string $method, ?string $requestedMethod = null): array
     {
-        $none = ['headers' => [], 'preflight' => false];
+        $config = ConfigKeys::camelize($config); // aceita o alias legado max_age / expose_headers
+        $none   = ['headers' => [], 'preflight' => false];
 
         if ($origin === null || $origin === '') {
             return $none;
@@ -53,7 +56,7 @@ class Cors
             $headers['Access-Control-Allow-Credentials'] = 'true';
         }
 
-        $expose = self::headerNames($config['expose_headers'] ?? []);
+        $expose = self::headerNames($config['exposeHeaders'] ?? []);
         if ($expose !== []) {
             $headers['Access-Control-Expose-Headers'] = implode(', ', $expose);
         }
@@ -63,27 +66,28 @@ class Cors
         if ($preflight) {
             $headers['Access-Control-Allow-Methods'] = implode(', ', $config['methods'] ?? self::DEFAULT_METHODS);
             $headers['Access-Control-Allow-Headers'] = implode(', ', $config['headers'] ?? self::DEFAULT_HEADERS);
-            $headers['Access-Control-Max-Age']       = (string) ($config['max_age'] ?? 600);
+            $headers['Access-Control-Max-Age']       = (string) ($config['maxAge'] ?? 600);
         }
 
         return ['headers' => $headers, 'preflight' => $preflight];
     }
 
     /**
-     * Devolve a config com `$name` incluído em `expose_headers`, se ainda não
-     * estiver (comparação sem diferenciar maiúsculas). Um `expose_headers`
+     * Devolve a config com `$name` incluído em `exposeHeaders`, se ainda não
+     * estiver (comparação sem diferenciar maiúsculas). Um `exposeHeaders`
      * que não seja array é tratado como vazio.
      */
     public static function withExposedHeader(array $config, string $name): array
     {
-        $expose = isset($config['expose_headers']) && is_array($config['expose_headers'])
-            ? $config['expose_headers']
+        $config = ConfigKeys::camelize($config);
+        $expose = isset($config['exposeHeaders']) && is_array($config['exposeHeaders'])
+            ? $config['exposeHeaders']
             : [];
 
         if (!in_array(strtolower($name), array_map('strtolower', self::headerNames($expose)), true)) {
             $expose[] = $name;
         }
-        $config['expose_headers'] = $expose;
+        $config['exposeHeaders'] = $expose;
 
         return $config;
     }

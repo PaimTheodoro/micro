@@ -340,7 +340,7 @@ class Router{
 	 */
 	private function applyCors(array $config) : void{
 		// Expõe o X-Request-Id ao browser apenas quando o monitor está ativo e configurado para isso
-		if(MonitorConfig::enabled() && MonitorConfig::get('expose_request_id')){
+		if(MonitorConfig::enabled() && MonitorConfig::get('exposeRequestId')){
 			$config = Cors::withExposedHeader($config, 'X-Request-Id');
 		}
 

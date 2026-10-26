@@ -28,7 +28,7 @@ final class Buffer
     private int $dropped = 0;
 
     /**
-     * @param int $maxEvents teto por tipo de evento (`max_events_per_request`; mínimo 1):
+     * @param int $maxEvents teto por tipo de evento (`maxEventsPerRequest`; mínimo 1):
      *                       queries e chamadas externas têm baterias separadas
      */
     public function __construct(int $maxEvents)

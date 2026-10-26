@@ -2,11 +2,15 @@
 
 namespace Psf\Monitor;
 
+use Psf\Helper\ConfigKeys;
+
 /**
  * Configuração do monitor (observabilidade).
  *
  * Lê `settings.monitor` do config do PSF, mescla com os defaults
- * (merge recursivo) e memoiza o resultado até `reset()`.
+ * (merge recursivo) e memoiza o resultado até `reset()`. As chaves são
+ * camelCase (`rawDays`); as grafias snake_case (`raw_days`) seguem aceitas
+ * como alias legado, tanto na config quanto em `get()`.
  */
 final class Config
 {
@@ -14,16 +18,16 @@ final class Config
     private const DEFAULTS = [
         'enabled'                => false,
         'sample'                 => ['normal' => 0.1],
-        'slow_ms'                => ['request' => 1000, 'query' => 200, 'external' => 1000],
-        'max_events_per_request' => 200,
-        'retention'              => ['raw_days' => 7, 'aggregate_days' => 90],
-        'breaker'                => ['failures' => 3, 'cooldown_seconds' => 300],
-        'connect_timeout'        => 1,
-        'expose_request_id'      => true,
-        'store_user'             => true,
-        'user_id_property'       => 'id',
-        'auto_migrate'           => false,
-        'store_exception_message' => true,
+        'slowMs'                 => ['request' => 1000, 'query' => 200, 'external' => 1000],
+        'maxEventsPerRequest' => 200,
+        'retention'              => ['rawDays' => 7, 'aggregateDays' => 90],
+        'breaker'                => ['failures' => 3, 'cooldownSeconds' => 300],
+        'connectTimeout'        => 1,
+        'exposeRequestId'      => true,
+        'storeUser'             => true,
+        'userIdProperty'       => 'id',
+        'autoMigrate'           => false,
+        'storeExceptionMessage' => true,
         'api'                    => ['enabled' => false],
     ];
 
@@ -44,6 +48,7 @@ final class Config
     {
         $value = self::all();
         foreach (explode('.', $dotPath) as $key) {
+            $key = ConfigKeys::camelKey($key);
             if (!is_array($value) || !array_key_exists($key, $value)) {
                 return $default;
             }
@@ -95,7 +100,8 @@ final class Config
             $settings = [];
         }
 
-        return self::$resolved = self::merge(self::DEFAULTS, $settings);
+        // `notifiers` é dado do projeto (nomes, headers, opções): não passa pela conversão de chaves
+        return self::$resolved = self::merge(self::DEFAULTS, ConfigKeys::camelize($settings, ['notifiers']));
     }
 
     /**

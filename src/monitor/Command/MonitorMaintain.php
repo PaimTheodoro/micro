@@ -45,8 +45,8 @@ class MonitorMaintain extends Command
         try {
             // Valida tudo antes de qualquer escrita (o rollup também não pode rodar)
             $maxHours = CommandOptions::maxHours($input->getOption('max-hours'));
-            $rawDays = CommandOptions::retentionDays('raw_days');
-            $aggregateDays = CommandOptions::retentionDays('aggregate_days');
+            $rawDays = CommandOptions::retentionDays('rawDays');
+            $aggregateDays = CommandOptions::retentionDays('aggregateDays');
             $opt = $input->getOption('environment');
             $db = is_string($opt) && $opt !== '' ? $opt : Config::database();
             $dbConfig = \PSF::config("db")[$db] ?? null;
@@ -57,7 +57,7 @@ class MonitorMaintain extends Command
             $dialect = DialectFactory::fromConfig($dbConfig);
             $now = new \DateTimeImmutable("now", new \DateTimeZone("UTC"));
 
-            // Falha do rollup não impede a limpeza: o teto de 4 x raw_days precisa valer
+            // Falha do rollup não impede a limpeza: o teto de 4 x rawDays precisa valer
             // mesmo com o rollup travado (senão as tabelas brutas crescem sem limite).
             $failed = false;
             try {

@@ -71,7 +71,7 @@ final class Monitor
     /** Lê o último erro do PHP para detectar fatal (padrão: error_get_last). */
     private static ?\Closure $fatalProvider = null;
 
-    /** Eventos do request (criado sob demanda com `max_events_per_request`). */
+    /** Eventos do request (criado sob demanda com `maxEventsPerRequest`). */
     private static ?Buffer $buffer = null;
 
     /** @var array<int, true> Ids (spl_object_id) das exceções já registradas. */
@@ -152,7 +152,7 @@ final class Monitor
     /** Headers de resposta do monitor (`X-Request-Id`), se ligado e exposto. */
     public static function responseHeaders(): array
     {
-        if (!self::enabled() || !Config::get('expose_request_id') || self::$requestId === null) {
+        if (!self::enabled() || !Config::get('exposeRequestId') || self::$requestId === null) {
             return [];
         }
         return ['X-Request-Id' => self::$requestId];
@@ -656,7 +656,7 @@ final class Monitor
     {
         $rows = [];
         $ts   = gmdate('Y-m-d H:i:s', (int) $start);
-        $storeMessage = (bool) Config::get('store_exception_message', true);
+        $storeMessage = (bool) Config::get('storeExceptionMessage', true);
         foreach ($buffer->exceptions() as $event) {
             try {
                 if (($event['throwable'] ?? null) instanceof \Throwable) {
@@ -692,18 +692,18 @@ final class Monitor
 
     private static function buffer(): Buffer
     {
-        return self::$buffer ??= new Buffer((int) Config::get('max_events_per_request'));
+        return self::$buffer ??= new Buffer((int) Config::get('maxEventsPerRequest'));
     }
 
     private static function extractUserId(mixed $auth): ?string
     {
         // `Router::$auth` pode ter qualquer forma: nada aqui pode lançar.
         try {
-            if (!Config::get('store_user')) {
+            if (!Config::get('storeUser')) {
                 return null;
             }
 
-            $property = Config::get('user_id_property', 'id');
+            $property = Config::get('userIdProperty', 'id');
             if (!is_int($property) && (!is_string($property) || $property === '')) {
                 return null;
             }
@@ -747,12 +747,12 @@ final class Monitor
         return self::$breaker ??= new CircuitBreaker(
             'db:' . Config::database(),
             (int) Config::get('breaker.failures'),
-            (int) Config::get('breaker.cooldown_seconds')
+            (int) Config::get('breaker.cooldownSeconds')
         );
     }
 
     /**
-     * Trata a falha de gravação. Com `auto_migrate` ligado e o esquema
+     * Trata a falha de gravação. Com `autoMigrate` ligado e o esquema
      * comprovadamente ausente, tenta instalar e regravar o lote uma vez;
      * qualquer outra falha segue o fluxo normal do breaker.
      */
@@ -762,7 +762,7 @@ final class Monitor
         array $batch,
         \Throwable $e
     ): void {
-        if (Config::get('auto_migrate') && self::schemaMissing($sink)) {
+        if (Config::get('autoMigrate') && self::schemaMissing($sink)) {
             $migrator = self::autoMigrator();
 
             switch ($migrator->run()) {
@@ -784,13 +784,13 @@ final class Monitor
 
                 case AutoMigrator::REFUSED:
                     if ($breaker->trip()) {
-                        error_log('[PSF][monitor] auto_migrate ignorado em prd; rode monitor:install');
+                        error_log('[PSF][monitor] autoMigrate ignorado em prd; rode monitor:install');
                     }
                     return;
 
                 default:
                     if ($breaker->trip()) {
-                        error_log('[PSF][monitor] auto_migrate indisponível: '
+                        error_log('[PSF][monitor] autoMigrate indisponível: '
                             . substr((string) ($migrator->lastError() ?? 'causa desconhecida'), 0, 500));
                     }
                     return;
@@ -837,7 +837,7 @@ final class Monitor
 
         error_log(sprintf(
             '[PSF][monitor] gravação suspensa por %ds após falhas consecutivas: %s.%s',
-            (int) Config::get('breaker.cooldown_seconds'),
+            (int) Config::get('breaker.cooldownSeconds'),
             substr((string) $cause, 0, 500),
             $hint
         ));

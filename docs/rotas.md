@@ -72,13 +72,13 @@ Configure `settings.cors` para liberar origens e responder o preflight (`OPTIONS
         'methods'     => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         'headers'     => ['Content-Type', 'Authorization'],
         'credentials' => false, // com true, '*' devolve a origem da requisição
-        'max_age'     => 600,
-        'expose_headers' => ['X-Request-Id'], // opcional: emite Access-Control-Expose-Headers
+        'maxAge'     => 600,
+        'exposeHeaders' => ['X-Request-Id'], // opcional: emite Access-Control-Expose-Headers
     ],
 ],
 ```
 
-Com o [monitor](observabilidade.md#x-request-id) ligado (e `expose_request_id`, o padrão), o `Router` acrescenta `X-Request-Id` a `expose_headers` automaticamente.
+Com o [monitor](observabilidade.md#x-request-id) ligado (e `exposeRequestId`, o padrão), o `Router` acrescenta `X-Request-Id` a `exposeHeaders` automaticamente.
 
 ### Cache de rotas
 
